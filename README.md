@@ -13,6 +13,8 @@ tuskott 是一个开发中的 Spring Boot Starter，目前实现了 [tus 协议]
     - [x] 文件校验
     - [x] 过期
 
+项目仍在开发中，目前在 SNAPSHOT 仓库中提供了 `0.0.1-SNAPSHOT` 版本。
+
 ```xml
 <dependency>
   <groupId>cc.ddrpa.tuskott</groupId>

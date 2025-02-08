@@ -26,12 +26,27 @@
       <organizationUrl>https://yufanonsoftware.me</organizationUrl>
     </developer>
   </developers>
+
   <scm>
     <connection>scm:git:git://github.com/ddrpa/tuskott.git</connection>
     <developerConnection>scm:git:ssh://github.com:ddrpa/tuskott.git
     </developerConnection>
     <url>http://github.com/ddrpa/tuskott/tree/master</url>
   </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>ossrh</id>
+      <url>
+        https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/
+      </url>
+    </repository>
+    <snapshotRepository>
+      <id>ossrh</id>
+      <url>https://s01.oss.sonatype.org/content/repositories/snapshots
+      </url>
+    </snapshotRepository>
+  </distributionManagement>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -108,10 +123,6 @@
 <!--        <groupId>org.apache.maven.plugins</groupId>-->
 <!--        <artifactId>maven-javadoc-plugin</artifactId>-->
 <!--        <version>2.9.1</version>-->
-<!--        <configuration>-->
-<!--          <detectJavaApiLink>false</detectJavaApiLink>-->
-<!--          <source>${java.version}</source>-->
-<!--        </configuration>-->
 <!--        <executions>-->
 <!--          <execution>-->
 <!--            <id>attach-javadocs</id>-->
@@ -121,6 +132,20 @@
 <!--          </execution>-->
 <!--        </executions>-->
 <!--      </plugin>-->
+      <plugin>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>sign</goal>
+            </goals>
+            <id>sign-artifacts</id>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+        <groupId>org.apache.maven.plugins</groupId>
+        <version>1.5</version>
+      </plugin>
     </plugins>
   </build>
 </project>

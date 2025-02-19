@@ -6,14 +6,15 @@ import cc.ddrpa.tuskott.event.UploadSuccessEvent;
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
 import cc.ddrpa.tuskott.tus.exception.ChecksumMismatchException;
 import cc.ddrpa.tuskott.tus.provider.BlobStoreProvider;
+import cc.ddrpa.tuskott.tus.provider.FileInfo;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
 import cc.ddrpa.tuskott.tus.provider.LockManager;
+import jakarta.annotation.Nullable;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -109,11 +110,10 @@ public class RequestHandler {
             response.setStatus(HttpServletResponse.SC_CREATED);
             return;
         }
-        Optional<String> metadata = Optional.ofNullable(
-            request.getHeader(ConstantsPool.HEADER_UPLOAD_METADATA));
         FileInfo fileInfo;
         try {
-            fileInfo = creation(uploadLength, metadata);
+            fileInfo = creation(uploadLength.orElse(null),
+                request.getHeader(ConstantsPool.HEADER_UPLOAD_METADATA));
         } catch (BlobAccessException | IOException e) {
             logger.error(e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
@@ -121,13 +121,13 @@ public class RequestHandler {
         }
         response.setStatus(HttpServletResponse.SC_CREATED);
         response.setHeader(ConstantsPool.HEADER_LOCATION,
-            request.getRequestURL() + "/" + fileInfo.getId());
+            request.getRequestURL() + "/" + fileInfo.id());
         // 判断是否为 creation-with-upload
         if (ConstantsPool.UPLOAD_CONTENT_TYPE.equalsIgnoreCase(
             request.getHeader(ConstantsPool.HEADER_CONTENT_TYPE)) && uploadLength.isPresent()) {
             try {
                 // TODO support checksum,lock
-                long newUploadOffset = patch(fileInfo.getId(),
+                long newUploadOffset = patch(fileInfo.id(),
                     request.getInputStream(), 0L);
                 response.setStatus(HttpServletResponse.SC_NO_CONTENT);
                 response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET,
@@ -162,17 +162,17 @@ public class RequestHandler {
             return;
         }
         response.setHeader(ConstantsPool.HEADER_UPLOAD_EXPIRES,
-            rfc7231DateTimeFormatter.format(fileInfo.getExpireTime()));
-        if (Objects.isNull(fileInfo.getUploadDeferLength())) {
+            rfc7231DateTimeFormatter.format(fileInfo.expireTime()));
+        if (Objects.isNull(fileInfo.uploadDeferLength())) {
             // 如果客户端没有指定上传长度，服务端必须在每次 HEAD 响应中提醒
             response.setHeader(ConstantsPool.HEADER_UPLOAD_DEFER_LENGTH, "1");
         }
         response.setStatus(HttpServletResponse.SC_NO_CONTENT);
         response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET,
-            String.valueOf(fileInfo.getUploadOffset()));
-        if (Objects.nonNull(fileInfo.getUploadLength())) {
+            String.valueOf(fileInfo.uploadOffset()));
+        if (Objects.nonNull(fileInfo.uploadLength())) {
             response.setHeader(ConstantsPool.HEADER_UPLOAD_LENGTH,
-                String.valueOf(fileInfo.getUploadLength()));
+                String.valueOf(fileInfo.uploadLength()));
         }
     }
 
@@ -207,8 +207,8 @@ public class RequestHandler {
             return;
         }
         response.setHeader(ConstantsPool.HEADER_UPLOAD_EXPIRES,
-            rfc7231DateTimeFormatter.format(fileInfo.getExpireTime()));
-        if (fileInfo.getUploadDeferLength()) {
+            rfc7231DateTimeFormatter.format(fileInfo.expireTime()));
+        if (fileInfo.uploadDeferLength()) {
             // 如果客户端之前请求在上传时指定上传长度，必须在第一个 PATCH 中提供 Upload-Length
             Optional<Long> uploadLength = extractUploadLength(request);
             if (uploadLength.isEmpty()) {
@@ -228,7 +228,7 @@ public class RequestHandler {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             return;
         }
-        if (uploadOffset.get() > fileInfo.getUploadOffset()) {
+        if (uploadOffset.get() > fileInfo.uploadOffset()) {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
             return;
         }
@@ -282,7 +282,7 @@ public class RequestHandler {
             response.setStatus(HttpServletResponse.SC_NO_CONTENT);
             // It MUST include the Upload-Offset header containing the new offset
             response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET, String.valueOf(newUploadOffset));
-            if (Objects.equals(newUploadOffset, fileInfo.getUploadLength())) {
+            if (Objects.equals(newUploadOffset, fileInfo.uploadLength())) {
                 // TODO 如果上传完成，将文件进行转存
                 // TODO 清理缓存
                 uploadSuccessCallback(new UploadSuccessEvent());
@@ -387,7 +387,7 @@ public class RequestHandler {
      *
      * @return
      */
-    private FileInfo creation(Optional<Long> uploadLength, Optional<String> metadata)
+    private FileInfo creation(@Nullable Long uploadLength, @Nullable String metadata)
         throws BlobAccessException, IOException {
         String fileInfoID = UUID.randomUUID().toString().replaceAll("-", "");
         FileInfo fileInfo = fileInfoProvider.create(fileInfoID, uploadLength, metadata);
@@ -491,8 +491,8 @@ public class RequestHandler {
             CompletableFuture.runAsync(() -> {
                 try {
                     callback.method().invoke(callback.bean(), event);
-                } catch (Exception ignored) {
-                    logger.trace("upload success callback error", ignored);
+                } catch (Exception e) {
+                    logger.trace("upload success callback error", e);
                 }
             });
         }

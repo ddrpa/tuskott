@@ -1,12 +1,11 @@
 package cc.ddrpa.tuskott.tus.provider;
 
-import cc.ddrpa.tuskott.tus.FileInfo;
+import jakarta.annotation.Nullable;
 import java.util.List;
-import java.util.Optional;
 
 public interface FileInfoProvider {
 
-    FileInfo create(String fileInfoID, Optional<Long> uploadLength, Optional<String> metadata);
+    FileInfo create(String fileInfoID, @Nullable Long uploadLength, @Nullable String metadata);
 
     FileInfo patch(String fileInfoID, long newUploadOffset);
 
@@ -16,5 +15,5 @@ public interface FileInfoProvider {
 
     List<String> getExpiredFileInfoIds();
 
-    void delete(List<String> expiredFileInfoIds);
+    void delete(List<String> fileInfoIds);
 }

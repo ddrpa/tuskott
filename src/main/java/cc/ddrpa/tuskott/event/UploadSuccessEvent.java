@@ -1,5 +1,13 @@
 package cc.ddrpa.tuskott.event;
 
-public class UploadSuccessEvent {
+import cc.ddrpa.tuskott.tus.provider.FileInfo;
+import java.time.LocalDateTime;
 
+public record UploadSuccessEvent (
+    LocalDateTime eventTime,
+    FileInfo fileInfo) {
+
+    public UploadSuccessEvent(FileInfo fileInfo) {
+        this(LocalDateTime.now(), fileInfo);
+    }
 }

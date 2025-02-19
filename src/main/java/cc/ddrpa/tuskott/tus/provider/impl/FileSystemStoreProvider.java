@@ -1,8 +1,9 @@
 package cc.ddrpa.tuskott.tus.provider.impl;
 
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
-import cc.ddrpa.tuskott.tus.provider.BlobStoreProvider;
+import cc.ddrpa.tuskott.tus.provider.StoreProvider;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +12,20 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
-public class FileSystemBlobStoreProvider implements BlobStoreProvider {
+public class FileSystemStoreProvider implements StoreProvider {
+
+    @Override
+    public InputStream read(String fileInfoId) throws FileNotFoundException, BlobAccessException {
+        Path filePath = getFilePath(fileInfoId);
+        File file = filePath.toFile();
+        if (!file.exists()) {
+            throw new FileNotFoundException(filePath.toString());
+        }
+        if (!file.canRead() || !file.isFile()) {
+            throw new BlobAccessException("file not readable");
+        }
+        return new FileInputStream(file);
+    }
 
     /**
      * 按序写入文件
@@ -78,7 +92,7 @@ public class FileSystemBlobStoreProvider implements BlobStoreProvider {
     }
 
     @Override
-    public void delete(List<String> expiredFileInfoIds) {
+    public void remove(List<String> expiredFileInfoIds) {
         for (String fileInfoId : expiredFileInfoIds) {
             Path filePath = getFilePath(fileInfoId);
             File file = filePath.toFile();

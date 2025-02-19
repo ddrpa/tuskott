@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * TODO 写文件块、组合文件块、删除文件、删除文件块
  */
-public interface BlobStoreProvider {
+public interface StoreProvider {
 
     /**
      * 按序写入文件
@@ -25,14 +25,16 @@ public interface BlobStoreProvider {
 
     void create(String fileInfoID) throws BlobAccessException, IOException;
 
-    void delete(List<String> expiredFileInfoIds);
+    void remove(List<String> expiredFileInfoIds);
+
+    InputStream read(String fileInfoId) throws FileNotFoundException, BlobAccessException;
 
     /**
      * 将上传进度回退到指定位置
      *
      * @param fileInfoId
-     * @param uploadOffset
+     * @param offset
      */
-    default void revoke(String fileInfoId, Long uploadOffset) {
+    default void rollback(String fileInfoId, Long offset) {
     }
 }

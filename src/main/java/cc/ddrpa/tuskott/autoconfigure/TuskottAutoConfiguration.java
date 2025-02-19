@@ -5,11 +5,11 @@ import cc.ddrpa.tuskott.event.OnUploadCreation;
 import cc.ddrpa.tuskott.event.OnUploadSuccess;
 import cc.ddrpa.tuskott.event.UploadCreateEvent;
 import cc.ddrpa.tuskott.event.UploadSuccessEvent;
-import cc.ddrpa.tuskott.tus.RequestHandler;
-import cc.ddrpa.tuskott.tus.provider.BlobStoreProvider;
+import cc.ddrpa.tuskott.tus.TuskottProcessor;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
 import cc.ddrpa.tuskott.tus.provider.LockManager;
-import cc.ddrpa.tuskott.tus.provider.impl.FileSystemBlobStoreProvider;
+import cc.ddrpa.tuskott.tus.provider.StoreProvider;
+import cc.ddrpa.tuskott.tus.provider.impl.FileSystemStoreProvider;
 import cc.ddrpa.tuskott.tus.provider.impl.InMemoryFileInfoProvider;
 import cc.ddrpa.tuskott.tus.provider.impl.InMemoryLockManager;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,14 +20,14 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.beans.BeansException;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
@@ -50,43 +50,60 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     }
 
     @Bean
-    @ConditionalOnMissingClass("LockManager")
-    LockManager lockManager() {
-        return new InMemoryLockManager();
-    }
-
-    @Bean
-    @ConditionalOnMissingClass("FileInfoProvider")
-    FileInfoProvider fileInfoProvider() {
-        return new InMemoryFileInfoProvider();
-    }
-
-    @Bean
-    @ConditionalOnMissingClass("BlobStoreProvider")
-    BlobStoreProvider blobStoreProvider() {
-        return new FileSystemBlobStoreProvider();
-    }
-
-    @Bean
-    @DependsOn({"fileInfoProvider", "blobStoreProvider", "lockManager", "tusEventHandler"})
-    RequestHandler requestHandler(FileInfoProvider fileInfoProvider,
-        BlobStoreProvider blobStoreProvider, LockManager lockManager) {
-        return new RequestHandler(tuskottProperties, fileInfoProvider, blobStoreProvider,
+    @ConditionalOnMissingBean(TuskottProcessor.class)
+    TuskottProcessor defaultTuskottProcessor() {
+        StoreProvider storeProvider;
+        String customizedStoreProvider = tuskottProperties.getStoreProvider();
+        if (StringUtils.hasText(customizedStoreProvider)) {
+            try {
+                storeProvider = (StoreProvider) applicationContext.getBean(
+                    Class.forName(customizedStoreProvider));
+            } catch (ClassNotFoundException e) {
+                throw new IllegalArgumentException("storeProvider not found", e);
+            }
+        } else {
+            storeProvider = new FileSystemStoreProvider();
+        }
+        FileInfoProvider fileInfoProvider;
+        String customizedFileInfoProvider = tuskottProperties.getFileInfoProvider();
+        if (StringUtils.hasText(customizedFileInfoProvider)) {
+            try {
+                fileInfoProvider = (FileInfoProvider) applicationContext.getBean(
+                    Class.forName(customizedFileInfoProvider));
+            } catch (ClassNotFoundException e) {
+                throw new IllegalArgumentException("fileInfoProvider not found", e);
+            }
+        } else {
+            fileInfoProvider = new InMemoryFileInfoProvider();
+        }
+        LockManager lockManager;
+        String customizedLockManager = tuskottProperties.getLockManager();
+        if (StringUtils.hasText(customizedLockManager)) {
+            try {
+                lockManager = (LockManager) applicationContext.getBean(
+                    Class.forName(customizedLockManager));
+            } catch (ClassNotFoundException e) {
+                throw new IllegalArgumentException("lockManager not found", e);
+            }
+        } else {
+            lockManager = new InMemoryLockManager();
+        }
+        return new TuskottProcessor(tuskottProperties, fileInfoProvider, storeProvider,
             lockManager);
     }
 
     @Bean
     public ApplicationRunner runner(RequestMappingHandlerMapping handlerMapping,
-        RequestHandler requestHandler) {
+        TuskottProcessor tuskottProcessor) {
         return args -> {
-            registerEndpoints(handlerMapping, requestHandler);
-            registerEventHandler(requestHandler);
+            registerEndpoints(handlerMapping, tuskottProcessor);
+            registerEventHandler(tuskottProcessor);
         };
     }
 
     private void registerEndpoints(
         RequestMappingHandlerMapping handlerMapping,
-        RequestHandler requestHandler) throws NoSuchMethodException {
+        TuskottProcessor tuskottProcessor) throws NoSuchMethodException {
         String endpoint = tuskottProperties.getEndpoint();
 
         handlerMapping.registerMapping(
@@ -94,8 +111,8 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .paths(endpoint + "/files")
                 .methods(RequestMethod.OPTIONS)
                 .build(),
-            requestHandler,
-            new HandlerMethod(requestHandler, "options", HttpServletRequest.class,
+            tuskottProcessor,
+            new HandlerMethod(tuskottProcessor, "options", HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
@@ -103,8 +120,8 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .paths(endpoint + "/files")
                 .methods(RequestMethod.POST)
                 .build(),
-            requestHandler,
-            new HandlerMethod(requestHandler, "creation", HttpServletRequest.class,
+            tuskottProcessor,
+            new HandlerMethod(tuskottProcessor, "creation", HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
@@ -112,8 +129,8 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .paths(endpoint + "/files/{fileInfoID}")
                 .methods(RequestMethod.HEAD)
                 .build(),
-            requestHandler,
-            new HandlerMethod(requestHandler, "head", String.class, HttpServletRequest.class,
+            tuskottProcessor,
+            new HandlerMethod(tuskottProcessor, "head", String.class, HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
@@ -121,8 +138,8 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .paths(endpoint + "/files/{fileInfoID}")
                 .methods(RequestMethod.PATCH)
                 .build(),
-            requestHandler,
-            new HandlerMethod(requestHandler, "patch", String.class, HttpServletRequest.class,
+            tuskottProcessor,
+            new HandlerMethod(tuskottProcessor, "patch", String.class, HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
@@ -130,13 +147,13 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .paths(endpoint + "/files/{fileInfoID}")
                 .methods(RequestMethod.DELETE)
                 .build(),
-            requestHandler,
-            new HandlerMethod(requestHandler, "termination", String.class,
+            tuskottProcessor,
+            new HandlerMethod(tuskottProcessor, "termination", String.class,
                 HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
     }
 
-    private void registerEventHandler(RequestHandler requestHandler) {
+    private void registerEventHandler(TuskottProcessor tuskottProcessor) {
         List<EventCallback> onSuccessCallback = new ArrayList<>();
         List<EventCallback> onCreateCallback = new ArrayList<>();
         Map<String, Object> beans = applicationContext.getBeansWithAnnotation(
@@ -154,6 +171,6 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 }
             }
         }
-        requestHandler.registerCallBack(onSuccessCallback, onCreateCallback);
+        tuskottProcessor.registerCallBack(onSuccessCallback, onCreateCallback);
     }
 }

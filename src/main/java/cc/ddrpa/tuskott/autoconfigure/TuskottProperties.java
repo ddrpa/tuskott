@@ -13,4 +13,7 @@ public class TuskottProperties {
     private long maxStoreSize = 1_073_741_824L;
     // 单次允许上传，默认 50MB
     private long maxRequestSize = 52_428_800L;
+    private String storeProvider;
+    private String fileInfoProvider;
+    private String lockManager;
 }

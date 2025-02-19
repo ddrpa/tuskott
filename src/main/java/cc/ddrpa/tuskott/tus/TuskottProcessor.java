@@ -5,7 +5,7 @@ import cc.ddrpa.tuskott.event.EventCallback;
 import cc.ddrpa.tuskott.event.UploadSuccessEvent;
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
 import cc.ddrpa.tuskott.tus.exception.ChecksumMismatchException;
-import cc.ddrpa.tuskott.tus.provider.BlobStoreProvider;
+import cc.ddrpa.tuskott.tus.provider.StoreProvider;
 import cc.ddrpa.tuskott.tus.provider.FileInfo;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
 import cc.ddrpa.tuskott.tus.provider.LockManager;
@@ -37,13 +37,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 /**
  * check <a href="https://tus.io/protocols/resumable-upload">TUS Protocol</a> for details
  */
-public class RequestHandler {
+public class TuskottProcessor {
 
-    private static final Logger logger = LoggerFactory.getLogger(RequestHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(TuskottProcessor.class);
 
     private final TuskottProperties tuskottProperties;
     private final FileInfoProvider fileInfoProvider;
-    private final BlobStoreProvider blobStoreProvider;
+    private final StoreProvider storeProvider;
     private final LockManager lockManager;
     private final DateTimeFormatter rfc7231DateTimeFormatter = DateTimeFormatter
         .ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.ENGLISH)
@@ -52,12 +52,20 @@ public class RequestHandler {
     private final List<EventCallback> onSuccessCallback = new ArrayList<>();
     private final List<EventCallback> onCreateCallback = new ArrayList<>();
 
-    public RequestHandler(TuskottProperties tuskottProperties, FileInfoProvider fileInfoProvider,
-        BlobStoreProvider blobStoreProvider, LockManager lockManager) {
+    public TuskottProcessor(TuskottProperties tuskottProperties, FileInfoProvider fileInfoProvider,
+        StoreProvider storeProvider, LockManager lockManager) {
         this.tuskottProperties = tuskottProperties;
         this.fileInfoProvider = fileInfoProvider;
-        this.blobStoreProvider = blobStoreProvider;
+        this.storeProvider = storeProvider;
         this.lockManager = lockManager;
+    }
+
+    public FileInfoProvider getFileInfoProvider() {
+        return fileInfoProvider;
+    }
+
+    public StoreProvider getStoreProvider() {
+        return storeProvider;
     }
 
     /**
@@ -285,7 +293,8 @@ public class RequestHandler {
             if (Objects.equals(newUploadOffset, fileInfo.uploadLength())) {
                 // TODO 如果上传完成，将文件进行转存
                 // TODO 清理缓存
-                uploadSuccessCallback(new UploadSuccessEvent());
+                uploadSuccessCallback(new UploadSuccessEvent(fileInfo));
+                fileInfoProvider.complete(fileInfoId, true);
             }
             Long contentLength = boundedInputStream.getCount();
 
@@ -391,7 +400,7 @@ public class RequestHandler {
         throws BlobAccessException, IOException {
         String fileInfoID = UUID.randomUUID().toString().replaceAll("-", "");
         FileInfo fileInfo = fileInfoProvider.create(fileInfoID, uploadLength, metadata);
-        blobStoreProvider.create(fileInfoID);
+        storeProvider.create(fileInfoID);
         return fileInfo;
     }
 
@@ -417,7 +426,7 @@ public class RequestHandler {
      */
     private Long patch(String fileInfoId, InputStream ins, Long uploadOffset)
         throws FileNotFoundException, BlobAccessException {
-        Long newUploadOffset = blobStoreProvider.write(fileInfoId, ins, uploadOffset);
+        Long newUploadOffset = storeProvider.write(fileInfoId, ins, uploadOffset);
         fileInfoProvider.patch(fileInfoId, newUploadOffset);
         return newUploadOffset;
     }
@@ -439,9 +448,9 @@ public class RequestHandler {
         byte[] expectedChecksum, MessageDigest messageDigest)
         throws FileNotFoundException, BlobAccessException, ChecksumMismatchException {
         DigestInputStream digestInputStream = new DigestInputStream(ins, messageDigest);
-        Long newUploadOffset = blobStoreProvider.write(fileInfoId, digestInputStream, uploadOffset);
+        Long newUploadOffset = storeProvider.write(fileInfoId, digestInputStream, uploadOffset);
         if (!MessageDigest.isEqual(expectedChecksum, messageDigest.digest())) {
-            blobStoreProvider.revoke(fileInfoId, uploadOffset);
+            storeProvider.rollback(fileInfoId, uploadOffset);
             throw new ChecksumMismatchException("checksum mismatch");
         }
         fileInfoProvider.patch(fileInfoId, newUploadOffset);
@@ -452,9 +461,8 @@ public class RequestHandler {
      * 删除过期文件
      */
     private void cleanExpiredFileInfo() {
-        List<String> expiredFileInfoIds = fileInfoProvider.getExpiredFileInfoIds();
-        fileInfoProvider.delete(expiredFileInfoIds);
-        blobStoreProvider.delete(expiredFileInfoIds);
+        List<String> expiredFileInfoIds = fileInfoProvider.expire(true);
+        storeProvider.remove(expiredFileInfoIds);
     }
 
     /**
@@ -465,8 +473,8 @@ public class RequestHandler {
     private void termination(String fileInfoId) {
         FileInfo fileInfo = fileInfoProvider.head(fileInfoId);
         if (Objects.nonNull(fileInfo)) {
-            fileInfoProvider.delete(List.of(fileInfoId));
-            blobStoreProvider.delete(List.of(fileInfoId));
+            fileInfoProvider.remove(List.of(fileInfoId));
+            storeProvider.remove(List.of(fileInfoId));
         }
     }
 

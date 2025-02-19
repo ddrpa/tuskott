@@ -42,16 +42,27 @@ public class InMemoryFileInfoProvider implements FileInfoProvider {
     }
 
     @Override
-    public List<String> getExpiredFileInfoIds() {
-        return fileInfoMap.values()
+    public List<String> expire(Boolean instantRemove) {
+        List<String> ids = fileInfoMap.values()
             .stream()
             .filter(fileInfo -> LocalDateTime.now().isBefore(fileInfo.expireTime()))
             .map(FileInfo::id)
             .toList();
+        if (!ids.isEmpty() && instantRemove) {
+            ids.forEach(fileInfoMap::remove);
+        }
+        return ids;
     }
 
     @Override
-    public void delete(List<String> fileInfoIds) {
+    public void complete(String fileInfoID, Boolean instantRemove) {
+        if (instantRemove) {
+            fileInfoMap.remove(fileInfoID);
+        }
+    }
+
+    @Override
+    public void remove(List<String> fileInfoIds) {
         fileInfoIds.forEach(fileInfoMap::remove);
     }
 }

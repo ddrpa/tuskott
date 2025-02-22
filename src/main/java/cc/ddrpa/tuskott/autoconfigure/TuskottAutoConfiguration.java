@@ -1,17 +1,18 @@
 package cc.ddrpa.tuskott.autoconfigure;
 
-import cc.ddrpa.tuskott.event.EventCallback;
-import cc.ddrpa.tuskott.event.OnUploadCreation;
-import cc.ddrpa.tuskott.event.OnUploadSuccess;
-import cc.ddrpa.tuskott.event.UploadCreateEvent;
-import cc.ddrpa.tuskott.event.UploadSuccessEvent;
+import cc.ddrpa.tuskott.hook.EventCallback;
+import cc.ddrpa.tuskott.hook.PostCreateEvent;
+import cc.ddrpa.tuskott.hook.PostFinishEvent;
+import cc.ddrpa.tuskott.hook.annotation.PostCreate;
+import cc.ddrpa.tuskott.hook.annotation.PostFinish;
+import cc.ddrpa.tuskott.properties.TuskottProperties;
 import cc.ddrpa.tuskott.tus.TuskottProcessor;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
-import cc.ddrpa.tuskott.tus.provider.LockManager;
-import cc.ddrpa.tuskott.tus.provider.StoreProvider;
-import cc.ddrpa.tuskott.tus.provider.impl.FileSystemStoreProvider;
-import cc.ddrpa.tuskott.tus.provider.impl.InMemoryFileInfoProvider;
-import cc.ddrpa.tuskott.tus.provider.impl.InMemoryLockManager;
+import cc.ddrpa.tuskott.tus.provider.LockProvider;
+import cc.ddrpa.tuskott.tus.provider.StorageBackend;
+import cc.ddrpa.tuskott.tus.provider.impl.LocalDiskStorageBackend;
+import cc.ddrpa.tuskott.tus.provider.impl.MemoryFileInfoProvider;
+import cc.ddrpa.tuskott.tus.provider.impl.MemoryLocker;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.lang.reflect.Method;
@@ -51,45 +52,34 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
 
     @Bean
     @ConditionalOnMissingBean(TuskottProcessor.class)
-    TuskottProcessor defaultTuskottProcessor() {
-        StoreProvider storeProvider;
-        String customizedStoreProvider = tuskottProperties.getStoreProvider();
-        if (StringUtils.hasText(customizedStoreProvider)) {
-            try {
-                storeProvider = (StoreProvider) applicationContext.getBean(
-                    Class.forName(customizedStoreProvider));
-            } catch (ClassNotFoundException e) {
-                throw new IllegalArgumentException("storeProvider not found", e);
-            }
+    TuskottProcessor defaultTuskottProcessor() throws ClassNotFoundException {
+        // TODO bean 初始化方式需要处理
+        StorageBackend storageBackend;
+        if (StringUtils.hasText(tuskottProperties.getStorageBackend().getStoreBackendProvider())) {
+            Class<StorageBackend> storageBackendClass = (Class<StorageBackend>) Class.forName(
+                tuskottProperties.getStorageBackend().getStoreBackendProvider());
+            storageBackend = applicationContext.getBean(storageBackendClass);
         } else {
-            storeProvider = new FileSystemStoreProvider();
+            storageBackend = new LocalDiskStorageBackend();
         }
         FileInfoProvider fileInfoProvider;
-        String customizedFileInfoProvider = tuskottProperties.getFileInfoProvider();
-        if (StringUtils.hasText(customizedFileInfoProvider)) {
-            try {
-                fileInfoProvider = (FileInfoProvider) applicationContext.getBean(
-                    Class.forName(customizedFileInfoProvider));
-            } catch (ClassNotFoundException e) {
-                throw new IllegalArgumentException("fileInfoProvider not found", e);
-            }
+        if (StringUtils.hasText(tuskottProperties.getFileInfoProvider())) {
+            Class<FileInfoProvider> fileInfoProviderClass = (Class<FileInfoProvider>) Class.forName(
+                tuskottProperties.getFileInfoProvider());
+            fileInfoProvider = applicationContext.getBean(fileInfoProviderClass);
         } else {
-            fileInfoProvider = new InMemoryFileInfoProvider();
+            fileInfoProvider = new MemoryFileInfoProvider();
         }
-        LockManager lockManager;
-        String customizedLockManager = tuskottProperties.getLockManager();
-        if (StringUtils.hasText(customizedLockManager)) {
-            try {
-                lockManager = (LockManager) applicationContext.getBean(
-                    Class.forName(customizedLockManager));
-            } catch (ClassNotFoundException e) {
-                throw new IllegalArgumentException("lockManager not found", e);
-            }
+        LockProvider lockProvider;
+        if (StringUtils.hasText(tuskottProperties.getLockProvider())) {
+            Class<LockProvider> lockProviderClass = (Class<LockProvider>) Class.forName(
+                tuskottProperties.getLockProvider());
+            lockProvider = applicationContext.getBean(lockProviderClass);
         } else {
-            lockManager = new InMemoryLockManager();
+            lockProvider = new MemoryLocker();
         }
-        return new TuskottProcessor(tuskottProperties, fileInfoProvider, storeProvider,
-            lockManager);
+        return new TuskottProcessor(tuskottProperties, fileInfoProvider, storageBackend,
+            lockProvider);
     }
 
     @Bean
@@ -104,7 +94,7 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     private void registerEndpoints(
         RequestMappingHandlerMapping handlerMapping,
         TuskottProcessor tuskottProcessor) throws NoSuchMethodException {
-        String endpoint = tuskottProperties.getEndpoint();
+        String endpoint = tuskottProperties.getBasePath();
 
         handlerMapping.registerMapping(
             RequestMappingInfo
@@ -160,13 +150,13 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
             Component.class); // 扫描 @Component 里的 Bean
         for (Object bean : beans.values()) {
             for (Method method : bean.getClass().getDeclaredMethods()) {
-                if (method.isAnnotationPresent(OnUploadSuccess.class)
+                if (method.isAnnotationPresent(PostFinish.class)
                     && method.getParameterCount() == 1
-                    && method.getParameterTypes()[0] == UploadSuccessEvent.class) {
+                    && method.getParameterTypes()[0] == PostFinishEvent.class) {
                     onSuccessCallback.add(new EventCallback(bean, method));
-                } else if (method.isAnnotationPresent(OnUploadCreation.class)
+                } else if (method.isAnnotationPresent(PostCreate.class)
                     && method.getParameterCount() == 1
-                    && method.getParameterTypes()[0] == UploadCreateEvent.class) {
+                    && method.getParameterTypes()[0] == PostCreateEvent.class) {
                     onCreateCallback.add(new EventCallback(bean, method));
                 }
             }

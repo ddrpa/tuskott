@@ -1,7 +1,7 @@
 package cc.ddrpa.tuskott.tus.provider.impl;
 
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
-import cc.ddrpa.tuskott.tus.provider.StoreProvider;
+import cc.ddrpa.tuskott.tus.provider.StorageBackend;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
-public class FileSystemStoreProvider implements StoreProvider {
+public class LocalDiskStorageBackend implements StorageBackend {
 
     @Override
     public InputStream read(String fileInfoId) throws FileNotFoundException, BlobAccessException {

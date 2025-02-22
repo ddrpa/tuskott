@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * TODO 写文件块、组合文件块、删除文件、删除文件块
  */
-public interface StoreProvider {
+public interface StorageBackend {
 
     /**
      * 按序写入文件

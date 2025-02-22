@@ -2,6 +2,7 @@ package cc.ddrpa.tuskott.tus.provider;
 
 import jakarta.annotation.Nullable;
 import java.util.List;
+import java.util.Optional;
 
 public interface FileInfoProvider {
 
@@ -47,15 +48,16 @@ public interface FileInfoProvider {
      * @param instantRemove 是否删除
      * @return
      */
-    List<String> expire(Boolean instantRemove);
+    List<String> listExpired(Boolean instantRemove);
 
     /**
      * 完成上传
      *
      * @param fileInfoID
-     * @param instantRemove 是否删除
      */
-    void complete(String fileInfoID, Boolean instantRemove);
+    default void complete(String fileInfoID) {
+        // nothing needed
+    }
 
     /**
      * 批量删除上传
@@ -63,4 +65,14 @@ public interface FileInfoProvider {
      * @param fileInfoIDs
      */
     void remove(List<String> fileInfoIDs);
+
+    /**
+     * 根据 checksum 查找文件
+     *
+     * @param checksum
+     * @return
+     */
+    default Optional<FileInfo> findByChecksum(String checksum) {
+        return Optional.empty();
+    }
 }

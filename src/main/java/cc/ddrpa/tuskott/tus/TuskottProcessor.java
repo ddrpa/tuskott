@@ -1,14 +1,14 @@
 package cc.ddrpa.tuskott.tus;
 
-import cc.ddrpa.tuskott.autoconfigure.TuskottProperties;
-import cc.ddrpa.tuskott.event.EventCallback;
-import cc.ddrpa.tuskott.event.UploadSuccessEvent;
+import cc.ddrpa.tuskott.properties.TuskottProperties;
+import cc.ddrpa.tuskott.hook.EventCallback;
+import cc.ddrpa.tuskott.hook.PostFinishEvent;
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
 import cc.ddrpa.tuskott.tus.exception.ChecksumMismatchException;
-import cc.ddrpa.tuskott.tus.provider.StoreProvider;
 import cc.ddrpa.tuskott.tus.provider.FileInfo;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
-import cc.ddrpa.tuskott.tus.provider.LockManager;
+import cc.ddrpa.tuskott.tus.provider.LockProvider;
+import cc.ddrpa.tuskott.tus.provider.StorageBackend;
 import jakarta.annotation.Nullable;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import org.apache.commons.io.input.BoundedInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,29 +44,36 @@ public class TuskottProcessor {
 
     private final TuskottProperties tuskottProperties;
     private final FileInfoProvider fileInfoProvider;
-    private final StoreProvider storeProvider;
-    private final LockManager lockManager;
+    private final StorageBackend storageBackend;
+    private final LockProvider lockProvider;
     private final DateTimeFormatter rfc7231DateTimeFormatter = DateTimeFormatter
         .ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.ENGLISH)
         .withZone(ZoneId.of("GMT"));
 
     private final List<EventCallback> onSuccessCallback = new ArrayList<>();
     private final List<EventCallback> onCreateCallback = new ArrayList<>();
+    private final BiFunction<HttpServletRequest, String, String> locationFunction;
 
     public TuskottProcessor(TuskottProperties tuskottProperties, FileInfoProvider fileInfoProvider,
-        StoreProvider storeProvider, LockManager lockManager) {
+        StorageBackend storageBackend, LockProvider lockProvider) {
         this.tuskottProperties = tuskottProperties;
         this.fileInfoProvider = fileInfoProvider;
-        this.storeProvider = storeProvider;
-        this.lockManager = lockManager;
+        this.storageBackend = storageBackend;
+        this.lockProvider = lockProvider;
+        if (tuskottProperties.getBehindProxy()) {
+            locationFunction = (req, fileInfoId) ->
+                req.getHeader(tuskottProperties.getUriHeaderName()) + "/" + fileInfoId;
+        } else {
+            locationFunction = (req, fileInfoId) -> req.getRequestURI() + "/" + fileInfoId;
+        }
     }
 
     public FileInfoProvider getFileInfoProvider() {
         return fileInfoProvider;
     }
 
-    public StoreProvider getStoreProvider() {
-        return storeProvider;
+    public StorageBackend getStoreBackend() {
+        return storageBackend;
     }
 
     /**
@@ -76,11 +84,12 @@ public class TuskottProcessor {
      * @param response
      */
     public void options(HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_EXTENSION, ConstantsPool.TUS_EXTENSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
-            String.valueOf(tuskottProperties.getMaxStoreSize()));
+            String.valueOf(tuskottProperties.getMaxBlobSize()));
         response.setHeader(ConstantsPool.HEADER_TUS_CHECKSUM_ALGORITHM,
             ChecksumAlgorithmSelector.SUPPORTED_CHECKSUM_ALGORITHM);
         response.setStatus(HttpServletResponse.SC_NO_CONTENT);
@@ -95,6 +104,7 @@ public class TuskottProcessor {
      * @param response
      */
     public void creation(HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         if (!checkTusResumable(request)) {
@@ -109,7 +119,7 @@ public class TuskottProcessor {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 return;
             }
-        } else if (uploadLength.get() > tuskottProperties.getMaxStoreSize()) {
+        } else if (uploadLength.get() > tuskottProperties.getMaxBlobSize()) {
             // 客户端声明的上传体积过大
             response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
             return;
@@ -129,7 +139,7 @@ public class TuskottProcessor {
         }
         response.setStatus(HttpServletResponse.SC_CREATED);
         response.setHeader(ConstantsPool.HEADER_LOCATION,
-            request.getRequestURL() + "/" + fileInfo.id());
+            locationFunction.apply(request, fileInfo.id()));
         // 判断是否为 creation-with-upload
         if (ConstantsPool.UPLOAD_CONTENT_TYPE.equalsIgnoreCase(
             request.getHeader(ConstantsPool.HEADER_CONTENT_TYPE)) && uploadLength.isPresent()) {
@@ -155,10 +165,11 @@ public class TuskottProcessor {
      */
     public void head(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
-            String.valueOf(tuskottProperties.getMaxStoreSize()));
+            String.valueOf(tuskottProperties.getMaxBlobSize()));
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
@@ -195,10 +206,11 @@ public class TuskottProcessor {
      */
     public void patch(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
-            String.valueOf(tuskottProperties.getMaxStoreSize()));
+            String.valueOf(tuskottProperties.getMaxBlobSize()));
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
@@ -222,7 +234,7 @@ public class TuskottProcessor {
             if (uploadLength.isEmpty()) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 return;
-            } else if (uploadLength.get() > tuskottProperties.getMaxStoreSize()) {
+            } else if (uploadLength.get() > tuskottProperties.getMaxBlobSize()) {
                 response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
                 return;
             }
@@ -262,7 +274,7 @@ public class TuskottProcessor {
             needChecksumValidate = true;
         }
 
-        if (!lockManager.acquireLock(fileInfoId)) {
+        if (!lockProvider.acquire(fileInfoId)) {
             response.setStatus(ConstantsPool.HTTP_LOCKED);
             return;
         }
@@ -270,7 +282,7 @@ public class TuskottProcessor {
         try (InputStream originInputStream = request.getInputStream()) {
             BoundedInputStream boundedInputStream = BoundedInputStream.builder()
                 .setInputStream(originInputStream)
-                .setMaxCount(tuskottProperties.getMaxRequestSize())
+                .setMaxCount(tuskottProperties.getMaxUpload())
                 .setPropagateClose(true)
                 .get();
             Long newUploadOffset;
@@ -291,10 +303,8 @@ public class TuskottProcessor {
             // It MUST include the Upload-Offset header containing the new offset
             response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET, String.valueOf(newUploadOffset));
             if (Objects.equals(newUploadOffset, fileInfo.uploadLength())) {
-                // TODO 如果上传完成，将文件进行转存
-                // TODO 清理缓存
-                uploadSuccessCallback(new UploadSuccessEvent(fileInfo));
-                fileInfoProvider.complete(fileInfoId, true);
+                uploadSuccessCallback(new PostFinishEvent(fileInfo));
+                fileInfoProvider.complete(fileInfoId);
             }
             Long contentLength = boundedInputStream.getCount();
 
@@ -304,7 +314,7 @@ public class TuskottProcessor {
             logger.error(e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         } finally {
-            lockManager.releaseLock(fileInfoId);
+            lockProvider.release(fileInfoId);
         }
         response.setStatus(HttpServletResponse.SC_NO_CONTENT);
     }
@@ -319,10 +329,11 @@ public class TuskottProcessor {
      */
     public void termination(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
-            String.valueOf(tuskottProperties.getMaxStoreSize()));
+            String.valueOf(tuskottProperties.getMaxBlobSize()));
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
@@ -334,7 +345,7 @@ public class TuskottProcessor {
             return;
         }
         termination(fileInfoId);
-//        tusEventHandler.onTermination(new UploadTerminatedEvent());
+//        tusEventHandler.onTermination(new PostTerminateEvent());
     }
 
     protected boolean checkTusResumable(HttpServletRequest request) {
@@ -400,7 +411,7 @@ public class TuskottProcessor {
         throws BlobAccessException, IOException {
         String fileInfoID = UUID.randomUUID().toString().replaceAll("-", "");
         FileInfo fileInfo = fileInfoProvider.create(fileInfoID, uploadLength, metadata);
-        storeProvider.create(fileInfoID);
+        storageBackend.create(fileInfoID);
         return fileInfo;
     }
 
@@ -426,7 +437,7 @@ public class TuskottProcessor {
      */
     private Long patch(String fileInfoId, InputStream ins, Long uploadOffset)
         throws FileNotFoundException, BlobAccessException {
-        Long newUploadOffset = storeProvider.write(fileInfoId, ins, uploadOffset);
+        Long newUploadOffset = storageBackend.write(fileInfoId, ins, uploadOffset);
         fileInfoProvider.patch(fileInfoId, newUploadOffset);
         return newUploadOffset;
     }
@@ -448,9 +459,9 @@ public class TuskottProcessor {
         byte[] expectedChecksum, MessageDigest messageDigest)
         throws FileNotFoundException, BlobAccessException, ChecksumMismatchException {
         DigestInputStream digestInputStream = new DigestInputStream(ins, messageDigest);
-        Long newUploadOffset = storeProvider.write(fileInfoId, digestInputStream, uploadOffset);
+        Long newUploadOffset = storageBackend.write(fileInfoId, digestInputStream, uploadOffset);
         if (!MessageDigest.isEqual(expectedChecksum, messageDigest.digest())) {
-            storeProvider.rollback(fileInfoId, uploadOffset);
+            storageBackend.rollback(fileInfoId, uploadOffset);
             throw new ChecksumMismatchException("checksum mismatch");
         }
         fileInfoProvider.patch(fileInfoId, newUploadOffset);
@@ -461,8 +472,8 @@ public class TuskottProcessor {
      * 删除过期文件
      */
     private void cleanExpiredFileInfo() {
-        List<String> expiredFileInfoIds = fileInfoProvider.expire(true);
-        storeProvider.remove(expiredFileInfoIds);
+        List<String> expiredFileInfoIds = fileInfoProvider.listExpired(true);
+        storageBackend.remove(expiredFileInfoIds);
     }
 
     /**
@@ -474,7 +485,7 @@ public class TuskottProcessor {
         FileInfo fileInfo = fileInfoProvider.head(fileInfoId);
         if (Objects.nonNull(fileInfo)) {
             fileInfoProvider.remove(List.of(fileInfoId));
-            storeProvider.remove(List.of(fileInfoId));
+            storageBackend.remove(List.of(fileInfoId));
         }
     }
 
@@ -494,7 +505,7 @@ public class TuskottProcessor {
         }
     }
 
-    private void uploadSuccessCallback(UploadSuccessEvent event) {
+    private void uploadSuccessCallback(PostFinishEvent event) {
         for (EventCallback callback : onSuccessCallback) {
             CompletableFuture.runAsync(() -> {
                 try {

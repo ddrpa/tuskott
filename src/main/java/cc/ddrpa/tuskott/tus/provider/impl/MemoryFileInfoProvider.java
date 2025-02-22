@@ -8,41 +8,41 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public class InMemoryFileInfoProvider implements FileInfoProvider {
+public class MemoryFileInfoProvider implements FileInfoProvider {
 
-    private static final Map<String, BasicFileInfo> fileInfoMap = new HashMap<>();
+    private static final Map<String, SimpleFileInfo> fileInfoMap = new HashMap<>();
 
     @Override
-    public BasicFileInfo create(String fileInfoID, Long uploadLength, String metadata) {
-        BasicFileInfo fileInfo;
+    public SimpleFileInfo create(String fileInfoID, Long uploadLength, String metadata) {
+        SimpleFileInfo fileInfo;
         if (Objects.nonNull(uploadLength)) {
-            fileInfo = new BasicFileInfo(fileInfoID, uploadLength, metadata);
+            fileInfo = new SimpleFileInfo(fileInfoID, uploadLength, metadata);
         } else {
-            fileInfo = new BasicFileInfo(fileInfoID, metadata);
+            fileInfo = new SimpleFileInfo(fileInfoID, metadata);
         }
         fileInfoMap.put(fileInfoID, fileInfo);
         return fileInfo;
     }
 
     @Override
-    public BasicFileInfo patch(String fileInfoID, long newUploadOffset) {
+    public SimpleFileInfo patch(String fileInfoID, long newUploadOffset) {
         fileInfoMap.get(fileInfoID).patch(newUploadOffset);
         return fileInfoMap.get(fileInfoID);
     }
 
     @Override
-    public BasicFileInfo head(String fileInfoID) {
+    public SimpleFileInfo head(String fileInfoID) {
         return fileInfoMap.get(fileInfoID);
     }
 
     @Override
-    public BasicFileInfo updateUploadLength(String fileInfoID, Long uploadLength) {
+    public SimpleFileInfo updateUploadLength(String fileInfoID, Long uploadLength) {
         fileInfoMap.get(fileInfoID).uploadLength(uploadLength);
         return fileInfoMap.get(fileInfoID);
     }
 
     @Override
-    public List<String> expire(Boolean instantRemove) {
+    public List<String> listExpired(Boolean instantRemove) {
         List<String> ids = fileInfoMap.values()
             .stream()
             .filter(fileInfo -> LocalDateTime.now().isBefore(fileInfo.expireTime()))
@@ -52,13 +52,6 @@ public class InMemoryFileInfoProvider implements FileInfoProvider {
             ids.forEach(fileInfoMap::remove);
         }
         return ids;
-    }
-
-    @Override
-    public void complete(String fileInfoID, Boolean instantRemove) {
-        if (instantRemove) {
-            fileInfoMap.remove(fileInfoID);
-        }
     }
 
     @Override

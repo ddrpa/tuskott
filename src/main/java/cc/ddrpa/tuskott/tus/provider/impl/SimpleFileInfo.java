@@ -9,9 +9,11 @@ import java.util.HashMap;
 import java.util.Map;
 import org.springframework.util.StringUtils;
 
-public class BasicFileInfo implements FileInfo, Serializable {
+public class SimpleFileInfo implements FileInfo, Serializable {
 
     @Serial
+    private static final long serialVersionUID = 1L;
+
     private String id;
     private String checksum;
     // 文件总体积（字节数）
@@ -24,7 +26,7 @@ public class BasicFileInfo implements FileInfo, Serializable {
     private LocalDateTime expireTime;
     private String metadata;
 
-    public BasicFileInfo(String id, Long uploadLength, String metadata) {
+    public SimpleFileInfo(String id, Long uploadLength, String metadata) {
         this.id = id;
         this.uploadLength = uploadLength;
         this.uploadDeferLength = false;
@@ -34,7 +36,7 @@ public class BasicFileInfo implements FileInfo, Serializable {
         this.metadata = metadata;
     }
 
-    public BasicFileInfo(String id, String metadata) {
+    public SimpleFileInfo(String id, String metadata) {
         this.id = id;
         this.uploadLength = 0L;
         this.uploadDeferLength = true;

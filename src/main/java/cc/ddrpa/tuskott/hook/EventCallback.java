@@ -1,4 +1,4 @@
-package cc.ddrpa.tuskott.event;
+package cc.ddrpa.tuskott.hook;
 
 import java.lang.reflect.Method;
 

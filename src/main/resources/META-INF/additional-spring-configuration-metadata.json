@@ -1,21 +1,21 @@
 {
   "groups": [
     {
-      "sourceType": "cc.ddrpa.tuskott.autoconfigure.TuskottProperties",
+      "sourceType": "cc.ddrpa.tuskott.properties.TuskottProperties",
       "name": "tuskott",
-      "type": "cc.ddrpa.tuskott.autoconfigure.TuskottProperties"
+      "type": "cc.ddrpa.tuskott.properties.TuskottProperties"
     }
   ],
   "properties": [
     {
       "name": "tuskott.max-storage-size",
       "type": "java.lang.Long",
-      "sourceType": "cc.ddrpa.tuskott.autoconfigure.TuskottProperties"
+      "sourceType": "cc.ddrpa.tuskott.properties.TuskottProperties"
     },
     {
       "name": "tuskott.max-upload-size",
       "type": "java.lang.Long",
-      "sourceType": "cc.ddrpa.tuskott.autoconfigure.TuskottProperties"
+      "sourceType": "cc.ddrpa.tuskott.properties.TuskottProperties"
     }
   ]
 }

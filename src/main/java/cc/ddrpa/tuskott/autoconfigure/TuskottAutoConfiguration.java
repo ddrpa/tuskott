@@ -3,8 +3,10 @@ package cc.ddrpa.tuskott.autoconfigure;
 import cc.ddrpa.tuskott.hook.EventCallback;
 import cc.ddrpa.tuskott.hook.PostCreateEvent;
 import cc.ddrpa.tuskott.hook.PostFinishEvent;
+import cc.ddrpa.tuskott.hook.PostTerminateEvent;
 import cc.ddrpa.tuskott.hook.annotation.PostCreate;
 import cc.ddrpa.tuskott.hook.annotation.PostFinish;
+import cc.ddrpa.tuskott.hook.annotation.PostTerminate;
 import cc.ddrpa.tuskott.properties.TuskottProperties;
 import cc.ddrpa.tuskott.tus.TuskottProcessor;
 import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
@@ -111,7 +113,7 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
                 .methods(RequestMethod.POST)
                 .build(),
             tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "creation", HttpServletRequest.class,
+            new HandlerMethod(tuskottProcessor, "create", HttpServletRequest.class,
                 HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
@@ -144,23 +146,29 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     }
 
     private void registerEventHandler(TuskottProcessor tuskottProcessor) {
-        List<EventCallback> onSuccessCallback = new ArrayList<>();
-        List<EventCallback> onCreateCallback = new ArrayList<>();
-        Map<String, Object> beans = applicationContext.getBeansWithAnnotation(
-            Component.class); // 扫描 @Component 里的 Bean
+        List<EventCallback> postCreateCallback = new ArrayList<>();
+        List<EventCallback> postFinishCallback = new ArrayList<>();
+        List<EventCallback> postTerminateCallback = new ArrayList<>();
+        // 扫描 @Component 里的 Bean
+        Map<String, Object> beans = applicationContext.getBeansWithAnnotation(Component.class);
         for (Object bean : beans.values()) {
             for (Method method : bean.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(PostFinish.class)
                     && method.getParameterCount() == 1
                     && method.getParameterTypes()[0] == PostFinishEvent.class) {
-                    onSuccessCallback.add(new EventCallback(bean, method));
+                    postFinishCallback.add(new EventCallback(bean, method));
                 } else if (method.isAnnotationPresent(PostCreate.class)
                     && method.getParameterCount() == 1
                     && method.getParameterTypes()[0] == PostCreateEvent.class) {
-                    onCreateCallback.add(new EventCallback(bean, method));
+                    postCreateCallback.add(new EventCallback(bean, method));
+                } else if (method.isAnnotationPresent(PostTerminate.class)
+                    && method.getParameterCount() == 1
+                    && method.getParameterTypes()[0] == PostTerminateEvent.class) {
+                    postTerminateCallback.add(new EventCallback(bean, method));
                 }
             }
         }
-        tuskottProcessor.registerCallBack(onSuccessCallback, onCreateCallback);
+        tuskottProcessor.registerCallBack(postCreateCallback, postFinishCallback,
+            postTerminateCallback);
     }
 }

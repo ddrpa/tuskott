@@ -2,21 +2,19 @@ package cc.ddrpa.tuskott.tus;
 
 public class ConstantsPool {
 
+    public static final String HEADER_TUS_VERSION = "Tus-Version";
     public static final String TUS_VERSION = "1.0.0";
     // TODO concatenation
     // DO NOT SUPPORT checksum-trailer
+    public static final String TUS_EXTENSION = "creation,creation-defer-length,expiration,termination,checksum,creation-with-upload";
     public static final String HEADER_ACCESS_CONTROL_EXPOSE_HEADERS = "Access-Control-Expose-Headers";
     public static final String ACCESS_CONTROL_EXPOSE_HEADERS = "Location, Upload-Offset, Upload-Length, Tus-Version, Tus-Resumable, Tus-Extension, Tus-Max-Size, Upload-Checksum";
-    public static final String HEADER_ACCESS_CONTROL_ALLOW_METHODS = "Access-Control-Allow-Methods";
-    public static final String ACCESS_CONTROL_ALLOW_METHODS = "POST, HEAD, PATCH, DELETE, OPTIONS";
-    public static final String TUS_EXTENSION = "creation,creation-defer-length,expiration,termination,checksum,creation-with-upload";
+    public static final String HEADER_CONTENT_TYPE = "Content-Type";
     public static final String UPLOAD_CONTENT_TYPE = "application/offset+octet-stream";
     public static final String HEADER_UPLOAD_OFFSET = "Upload-Offset";
     public static final String HEADER_UPLOAD_LENGTH = "Upload-Length";
     public static final String HEADER_CONTENT_LENGTH = "Content-Length";
-    public static final String HEADER_CONTENT_TYPE = "Content-Type";
     public static final String HEADER_LOCATION = "Location";
-    public static final String HEADER_TUS_VERSION = "Tus-Version";
     public static final String HEADER_TUS_RESUMABLE = "Tus-Resumable";
     public static final String HEADER_TUS_EXTENSION = "Tus-Extension";
     public static final String HEADER_TUS_MAX_SIZE = "Tus-Max-Size";

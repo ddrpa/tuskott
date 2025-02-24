@@ -6,7 +6,7 @@
 
   <groupId>cc.ddrpa.tuskott</groupId>
   <artifactId>tuskott-spring-boot-starter</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.1</version>
 
   <licenses>
     <license>
@@ -15,6 +15,7 @@
     </license>
   </licenses>
 
+  <name>tuskott</name>
   <url>https://github.com/ddrpa/tuskott</url>
   <description>A Spring Boot Starter that bring tus support.</description>
 
@@ -119,19 +120,19 @@
           </execution>
         </executions>
       </plugin>
-<!--      <plugin>-->
-<!--        <groupId>org.apache.maven.plugins</groupId>-->
-<!--        <artifactId>maven-javadoc-plugin</artifactId>-->
-<!--        <version>2.9.1</version>-->
-<!--        <executions>-->
-<!--          <execution>-->
-<!--            <id>attach-javadocs</id>-->
-<!--            <goals>-->
-<!--              <goal>jar</goal>-->
-<!--            </goals>-->
-<!--          </execution>-->
-<!--        </executions>-->
-<!--      </plugin>-->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.2</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <artifactId>maven-gpg-plugin</artifactId>
         <executions>

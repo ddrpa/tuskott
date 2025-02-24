@@ -1,11 +1,16 @@
 package cc.ddrpa.tuskott.hook;
 
 import cc.ddrpa.tuskott.tus.provider.FileInfo;
-import java.time.LocalDateTime;
 
-public record PostTerminateEvent(
-    LocalDateTime eventTime,
-    FileInfo upload
-) {
+public class PostTerminateEvent extends TusEvent {
 
+    private FileInfo upload;
+
+    public PostTerminateEvent(FileInfo upload) {
+        this.upload = upload;
+    }
+
+    public FileInfo upload() {
+        return upload;
+    }
 }

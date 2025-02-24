@@ -14,28 +14,21 @@ import java.util.List;
 
 public class LocalDiskStorageBackend implements StorageBackend {
 
-    @Override
-    public InputStream read(String fileInfoId) throws FileNotFoundException, BlobAccessException {
-        Path filePath = getFilePath(fileInfoId);
-        File file = filePath.toFile();
-        if (!file.exists()) {
-            throw new FileNotFoundException(filePath.toString());
-        }
-        if (!file.canRead() || !file.isFile()) {
-            throw new BlobAccessException("file not readable");
-        }
-        return new FileInputStream(file);
-    }
-
     /**
-     * 按序写入文件
-     *
-     * @param fileInfoId
-     * @param ins
-     * @param uploadOffset
-     * @return
+     * @param fileInfoID
+     * @throws BlobAccessException
      * @throws IOException
      */
+    @Override
+    public void create(String fileInfoID) throws BlobAccessException, IOException {
+        Path filePath = getFilePath(fileInfoID);
+        File file = filePath.toFile();
+        if (file.exists()) {
+            throw new BlobAccessException("file already exists");
+        }
+        file.createNewFile();
+    }
+
     @Override
     public Long write(String fileInfoId, InputStream ins, Long uploadOffset)
         throws FileNotFoundException, BlobAccessException {
@@ -75,22 +68,6 @@ public class LocalDiskStorageBackend implements StorageBackend {
         return uploadOffset + transferred;
     }
 
-//  TODO 写文件块、组合文件块、删除文件、删除文件块
-
-    private Path getFilePath(String fileInfoId) {
-        return Paths.get("uploads", fileInfoId);
-    }
-
-    @Override
-    public void create(String fileInfoID) throws BlobAccessException, IOException {
-        Path filePath = getFilePath(fileInfoID);
-        File file = filePath.toFile();
-        if (file.exists()) {
-            throw new BlobAccessException("file already exists");
-        }
-        file.createNewFile();
-    }
-
     @Override
     public void remove(List<String> expiredFileInfoIds) {
         for (String fileInfoId : expiredFileInfoIds) {
@@ -101,4 +78,23 @@ public class LocalDiskStorageBackend implements StorageBackend {
             }
         }
     }
+
+    @Override
+    public InputStream read(String fileInfoId) throws IOException, BlobAccessException {
+        Path filePath = getFilePath(fileInfoId);
+        File file = filePath.toFile();
+        if (!file.exists()) {
+            throw new FileNotFoundException(filePath.toString());
+        }
+        if (!file.canRead() || !file.isFile()) {
+            throw new BlobAccessException("file not readable");
+        }
+        return new FileInputStream(file);
+    }
+
+    private Path getFilePath(String fileInfoId) {
+        return Paths.get("uploads", fileInfoId);
+    }
+
+    //  TODO 写文件块、组合文件块、删除文件、删除文件块
 }

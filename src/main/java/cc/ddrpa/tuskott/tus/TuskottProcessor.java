@@ -1,8 +1,11 @@
 package cc.ddrpa.tuskott.tus;
 
-import cc.ddrpa.tuskott.properties.TuskottProperties;
 import cc.ddrpa.tuskott.hook.EventCallback;
+import cc.ddrpa.tuskott.hook.PostCreateEvent;
 import cc.ddrpa.tuskott.hook.PostFinishEvent;
+import cc.ddrpa.tuskott.hook.PostTerminateEvent;
+import cc.ddrpa.tuskott.hook.TusEvent;
+import cc.ddrpa.tuskott.properties.TuskottProperties;
 import cc.ddrpa.tuskott.tus.exception.BlobAccessException;
 import cc.ddrpa.tuskott.tus.exception.ChecksumMismatchException;
 import cc.ddrpa.tuskott.tus.provider.FileInfo;
@@ -50,8 +53,10 @@ public class TuskottProcessor {
         .ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.ENGLISH)
         .withZone(ZoneId.of("GMT"));
 
-    private final List<EventCallback> onSuccessCallback = new ArrayList<>();
-    private final List<EventCallback> onCreateCallback = new ArrayList<>();
+    private final List<EventCallback> postCreateCallback = new ArrayList<>();
+    private final List<EventCallback> postFinishCallback = new ArrayList<>();
+    private final List<EventCallback> postTerminateCallback = new ArrayList<>();
+
     private final BiFunction<HttpServletRequest, String, String> locationFunction;
 
     public TuskottProcessor(TuskottProperties tuskottProperties, FileInfoProvider fileInfoProvider,
@@ -84,7 +89,8 @@ public class TuskottProcessor {
      * @param response
      */
     public void options(HttpServletRequest request, HttpServletResponse response) {
-        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
+            ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_EXTENSION, ConstantsPool.TUS_EXTENSION);
@@ -103,8 +109,9 @@ public class TuskottProcessor {
      * @param request
      * @param response
      */
-    public void creation(HttpServletRequest request, HttpServletResponse response) {
-        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
+    public void create(HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
+            ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         if (!checkTusResumable(request)) {
@@ -130,7 +137,7 @@ public class TuskottProcessor {
         }
         FileInfo fileInfo;
         try {
-            fileInfo = creation(uploadLength.orElse(null),
+            fileInfo = create(uploadLength.orElse(null),
                 request.getHeader(ConstantsPool.HEADER_UPLOAD_METADATA));
         } catch (BlobAccessException | IOException e) {
             logger.error(e.getMessage());
@@ -165,7 +172,8 @@ public class TuskottProcessor {
      */
     public void head(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
-        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
+            ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
@@ -206,7 +214,8 @@ public class TuskottProcessor {
      */
     public void patch(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
-        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
+            ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
@@ -252,7 +261,6 @@ public class TuskottProcessor {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
             return;
         }
-
         // get Checksum
         MessageDigest messageDigest = null;
         boolean needChecksumValidate = false;
@@ -303,11 +311,10 @@ public class TuskottProcessor {
             // It MUST include the Upload-Offset header containing the new offset
             response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET, String.valueOf(newUploadOffset));
             if (Objects.equals(newUploadOffset, fileInfo.uploadLength())) {
-                uploadSuccessCallback(new PostFinishEvent(fileInfo));
+                invokeCallback(new PostFinishEvent(fileInfo));
                 fileInfoProvider.complete(fileInfoId);
             }
             Long contentLength = boundedInputStream.getCount();
-
         } catch (FileNotFoundException e) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
         } catch (BlobAccessException | IOException e) {
@@ -329,7 +336,8 @@ public class TuskottProcessor {
      */
     public void termination(@PathVariable("fileInfoID") String fileInfoId,
         HttpServletRequest request, HttpServletResponse response) {
-        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS, ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
+        response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
+            ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, "no-store");
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
@@ -345,19 +353,18 @@ public class TuskottProcessor {
             return;
         }
         termination(fileInfoId);
-//        tusEventHandler.onTermination(new PostTerminateEvent());
     }
 
-    protected boolean checkTusResumable(HttpServletRequest request) {
+    private boolean checkTusResumable(HttpServletRequest request) {
         return ConstantsPool.TUS_VERSION.equalsIgnoreCase(
             request.getHeader(ConstantsPool.HEADER_TUS_RESUMABLE));
     }
 
-    protected boolean checkContentType(HttpServletRequest request) {
+    private boolean checkContentType(HttpServletRequest request) {
         return ConstantsPool.UPLOAD_CONTENT_TYPE.equalsIgnoreCase(request.getContentType());
     }
 
-    protected Optional<Long> extractUploadOffset(HttpServletRequest request) {
+    private Optional<Long> extractUploadOffset(HttpServletRequest request) {
         String uploadOffsetAsStr = request.getHeader(ConstantsPool.HEADER_UPLOAD_OFFSET);
         if (!StringUtils.hasText(uploadOffsetAsStr)) {
             return Optional.empty();
@@ -381,7 +388,7 @@ public class TuskottProcessor {
      * @param request
      * @return
      */
-    protected Optional<Long> extractUploadLength(HttpServletRequest request) {
+    private Optional<Long> extractUploadLength(HttpServletRequest request) {
         String uploadLengthAsStr = request.getHeader(ConstantsPool.HEADER_UPLOAD_LENGTH);
         if (!StringUtils.hasText(uploadLengthAsStr)) {
             return Optional.empty();
@@ -397,7 +404,7 @@ public class TuskottProcessor {
         return Optional.ofNullable(uploadLength);
     }
 
-    protected boolean checkUploadDeferLength(HttpServletRequest request) {
+    private boolean checkUploadDeferLength(HttpServletRequest request) {
         String uploadDeferLength = request.getHeader(ConstantsPool.HEADER_UPLOAD_DEFER_LENGTH);
         return "1".equalsIgnoreCase(uploadDeferLength);
     }
@@ -407,11 +414,12 @@ public class TuskottProcessor {
      *
      * @return
      */
-    private FileInfo creation(@Nullable Long uploadLength, @Nullable String metadata)
+    private FileInfo create(@Nullable Long uploadLength, @Nullable String metadata)
         throws BlobAccessException, IOException {
         String fileInfoID = UUID.randomUUID().toString().replaceAll("-", "");
         FileInfo fileInfo = fileInfoProvider.create(fileInfoID, uploadLength, metadata);
         storageBackend.create(fileInfoID);
+        invokeCallback(new PostCreateEvent(fileInfo));
         return fileInfo;
     }
 
@@ -436,7 +444,7 @@ public class TuskottProcessor {
      * @throws BlobAccessException
      */
     private Long patch(String fileInfoId, InputStream ins, Long uploadOffset)
-        throws FileNotFoundException, BlobAccessException {
+        throws BlobAccessException, IOException {
         Long newUploadOffset = storageBackend.write(fileInfoId, ins, uploadOffset);
         fileInfoProvider.patch(fileInfoId, newUploadOffset);
         return newUploadOffset;
@@ -451,13 +459,13 @@ public class TuskottProcessor {
      * @param expectedChecksum
      * @param messageDigest
      * @return
-     * @throws FileNotFoundException
      * @throws BlobAccessException
      * @throws ChecksumMismatchException
+     * @throws IOException
      */
     private Long patchWithChecksum(String fileInfoId, InputStream ins, Long uploadOffset,
         byte[] expectedChecksum, MessageDigest messageDigest)
-        throws FileNotFoundException, BlobAccessException, ChecksumMismatchException {
+        throws BlobAccessException, ChecksumMismatchException, IOException {
         DigestInputStream digestInputStream = new DigestInputStream(ins, messageDigest);
         Long newUploadOffset = storageBackend.write(fileInfoId, digestInputStream, uploadOffset);
         if (!MessageDigest.isEqual(expectedChecksum, messageDigest.digest())) {
@@ -487,34 +495,62 @@ public class TuskottProcessor {
             fileInfoProvider.remove(List.of(fileInfoId));
             storageBackend.remove(List.of(fileInfoId));
         }
+        invokeCallback(new PostTerminateEvent(fileInfo));
     }
 
     /**
      * 注册回调函数
      *
-     * @param onSuccessCallback
-     * @param onCreateCallback
+     * @param postCreate
+     * @param postFinish
+     * @param postTerminate
      */
-    public void registerCallBack(List<EventCallback> onSuccessCallback,
-        List<EventCallback> onCreateCallback) {
-        if (!onSuccessCallback.isEmpty()) {
-            this.onSuccessCallback.addAll(onSuccessCallback);
+    public void registerCallBack(List<EventCallback> postCreate, List<EventCallback> postFinish,
+        List<EventCallback> postTerminate) {
+        if (!postCreate.isEmpty()) {
+            this.postCreateCallback.addAll(postCreate);
         }
-        if (!onCreateCallback.isEmpty()) {
-            this.onCreateCallback.addAll(onCreateCallback);
+        if (!postFinish.isEmpty()) {
+            this.postFinishCallback.addAll(postFinish);
+        }
+        if (!postTerminate.isEmpty()) {
+            this.postTerminateCallback.addAll(postTerminate);
         }
     }
 
-    private void uploadSuccessCallback(PostFinishEvent event) {
-        for (EventCallback callback : onSuccessCallback) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    callback.method().invoke(callback.bean(), event);
-                } catch (Exception e) {
-                    logger.trace("upload success callback error", e);
-                }
-            });
+    /**
+     * 触发上传成功回调
+     *
+     * @param event
+     */
+    private void invokeCallback(TusEvent event) {
+        if (event instanceof PostFinishEvent) {
+            for (EventCallback callback : postFinishCallback) {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        callback.method().invoke(callback.bean(), event);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        } else if (event instanceof PostCreateEvent) {
+            for (EventCallback callback : postCreateCallback) {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        callback.method().invoke(callback.bean(), event);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        } else if (event instanceof PostTerminateEvent) {
+            for (EventCallback callback : postTerminateCallback) {
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        callback.method().invoke(callback.bean(), event);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
         }
-        logger.trace("upload success callback");
     }
 }

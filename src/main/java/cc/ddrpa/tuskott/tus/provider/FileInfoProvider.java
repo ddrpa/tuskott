@@ -9,32 +9,32 @@ public interface FileInfoProvider {
     /**
      * 创建上传
      *
-     * @param fileInfoID
-     * @param uploadLength
-     * @param metadata
+     * @param fileInfoID fileInfoID
+     * @param uploadLength 上传长度
+     * @param metadata 元数据
      * @return
      */
     FileInfo create(String fileInfoID, @Nullable Long uploadLength, @Nullable String metadata);
 
     /**
-     * 上传文件
+     * 更新上传进度
      *
-     * @param fileInfoID
-     * @param newUploadOffset
+     * @param fileInfoID fileInfoID
+     * @param newUploadOffset 新的上传进度
      * @return
      */
     FileInfo patch(String fileInfoID, long newUploadOffset);
 
     /**
-     * 获取文件上传状态
+     * 获取上传状态
      *
-     * @param fileInfoID
+     * @param fileInfoID fileInfoID
      * @return
      */
     FileInfo head(String fileInfoID);
 
     /**
-     * 更新文件长度
+     * 更新上传数据长度
      *
      * @param fileInfoID
      * @param uploadLength
@@ -60,14 +60,14 @@ public interface FileInfoProvider {
     }
 
     /**
-     * 批量删除上传
+     * 批量删除
      *
      * @param fileInfoIDs
      */
     void remove(List<String> fileInfoIDs);
 
     /**
-     * 根据 checksum 查找文件
+     * 根据 checksum 查找
      *
      * @param checksum
      * @return

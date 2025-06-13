@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -85,7 +86,8 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     }
 
     @Bean
-    public ApplicationRunner runner(RequestMappingHandlerMapping handlerMapping,
+    public ApplicationRunner runner(
+        @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping,
         TuskottProcessor tuskottProcessor) {
         return args -> {
             registerEndpoints(handlerMapping, tuskottProcessor);

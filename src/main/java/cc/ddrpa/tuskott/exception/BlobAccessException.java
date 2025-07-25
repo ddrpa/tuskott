@@ -1,4 +1,4 @@
-package cc.ddrpa.tuskott.tus.exception;
+package cc.ddrpa.tuskott.exception;
 
 public class BlobAccessException extends Exception {
 

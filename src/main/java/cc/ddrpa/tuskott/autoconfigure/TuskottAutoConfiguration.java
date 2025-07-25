@@ -1,26 +1,19 @@
 package cc.ddrpa.tuskott.autoconfigure;
 
-import cc.ddrpa.tuskott.hook.EventCallback;
-import cc.ddrpa.tuskott.hook.PostCreateEvent;
-import cc.ddrpa.tuskott.hook.PostFinishEvent;
-import cc.ddrpa.tuskott.hook.PostTerminateEvent;
-import cc.ddrpa.tuskott.hook.annotation.PostCreate;
-import cc.ddrpa.tuskott.hook.annotation.PostFinish;
-import cc.ddrpa.tuskott.hook.annotation.PostTerminate;
+import cc.ddrpa.tuskott.event.PostCompleteEvent;
+import cc.ddrpa.tuskott.event.PostCreateEvent;
+import cc.ddrpa.tuskott.event.PostTerminateEvent;
+import cc.ddrpa.tuskott.event.TuskottEventCallback;
+import cc.ddrpa.tuskott.event.annotation.PostComplete;
+import cc.ddrpa.tuskott.event.annotation.PostCreate;
+import cc.ddrpa.tuskott.event.annotation.PostTerminate;
 import cc.ddrpa.tuskott.properties.TuskottProperties;
 import cc.ddrpa.tuskott.tus.TuskottProcessor;
-import cc.ddrpa.tuskott.tus.provider.FileInfoProvider;
-import cc.ddrpa.tuskott.tus.provider.LockProvider;
-import cc.ddrpa.tuskott.tus.provider.StorageBackend;
-import cc.ddrpa.tuskott.tus.provider.impl.LocalDiskStorageBackend;
-import cc.ddrpa.tuskott.tus.provider.impl.MemoryFileInfoProvider;
-import cc.ddrpa.tuskott.tus.provider.impl.MemoryLocker;
+import cc.ddrpa.tuskott.tus.lock.LockProvider;
+import cc.ddrpa.tuskott.tus.resource.UploadResourceTracker;
+import cc.ddrpa.tuskott.tus.storage.Storage;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
@@ -31,11 +24,16 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @Configuration
 @EnableConfigurationProperties(TuskottProperties.class)
@@ -55,40 +53,26 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
 
     @Bean
     @ConditionalOnMissingBean(TuskottProcessor.class)
-    TuskottProcessor defaultTuskottProcessor() throws ClassNotFoundException {
-        // TODO bean 初始化方式需要处理
-        StorageBackend storageBackend;
-        if (StringUtils.hasText(tuskottProperties.getStorageBackend().getStoreBackendProvider())) {
-            Class<StorageBackend> storageBackendClass = (Class<StorageBackend>) Class.forName(
-                tuskottProperties.getStorageBackend().getStoreBackendProvider());
-            storageBackend = applicationContext.getBean(storageBackendClass);
-        } else {
-            storageBackend = new LocalDiskStorageBackend();
-        }
-        FileInfoProvider fileInfoProvider;
-        if (StringUtils.hasText(tuskottProperties.getFileInfoProvider())) {
-            Class<FileInfoProvider> fileInfoProviderClass = (Class<FileInfoProvider>) Class.forName(
-                tuskottProperties.getFileInfoProvider());
-            fileInfoProvider = applicationContext.getBean(fileInfoProviderClass);
-        } else {
-            fileInfoProvider = new MemoryFileInfoProvider();
-        }
-        LockProvider lockProvider;
-        if (StringUtils.hasText(tuskottProperties.getLockProvider())) {
-            Class<LockProvider> lockProviderClass = (Class<LockProvider>) Class.forName(
-                tuskottProperties.getLockProvider());
-            lockProvider = applicationContext.getBean(lockProviderClass);
-        } else {
-            lockProvider = new MemoryLocker();
-        }
-        return new TuskottProcessor(tuskottProperties, fileInfoProvider, storageBackend,
-            lockProvider);
+    TuskottProcessor tuskottProcessor() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+        Class<Storage> storageClass = (Class<Storage>) Class.forName(tuskottProperties.getStorage().getProvider());
+        Map<String, Object> storageConfig = tuskottProperties.getStorage().getConfig();
+        Storage storage = storageClass.getDeclaredConstructor(Map.class).newInstance(storageConfig);
+
+        Class<UploadResourceTracker> uploadResourceHolderClass = (Class<UploadResourceTracker>) Class.forName(tuskottProperties.getTracker().getProvider());
+        Map<String, Object> trackerConfig = tuskottProperties.getTracker().getConfig();
+        UploadResourceTracker uploadResourceTracker = uploadResourceHolderClass.getDeclaredConstructor(Map.class).newInstance(trackerConfig);
+
+        Class<LockProvider> lockProviderClass = (Class<LockProvider>) Class.forName(tuskottProperties.getLock().getProvider());
+        Map<String, Object> lockConfig = tuskottProperties.getLock().getConfig();
+        LockProvider lockProvider = lockProviderClass.getDeclaredConstructor(Map.class).newInstance(lockConfig);
+
+        return new TuskottProcessor(tuskottProperties, uploadResourceTracker, storage, lockProvider);
     }
 
     @Bean
     public ApplicationRunner runner(
-        @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping,
-        TuskottProcessor tuskottProcessor) {
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping,
+            TuskottProcessor tuskottProcessor) {
         return args -> {
             registerEndpoints(handlerMapping, tuskottProcessor);
             registerEventHandler(tuskottProcessor);
@@ -96,81 +80,86 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     }
 
     private void registerEndpoints(
-        RequestMappingHandlerMapping handlerMapping,
-        TuskottProcessor tuskottProcessor) throws NoSuchMethodException {
-        String endpoint = tuskottProperties.getBasePath();
+            RequestMappingHandlerMapping handlerMapping,
+            TuskottProcessor tuskottProcessor) throws NoSuchMethodException {
+        String baseEndpoint = tuskottProperties.getBasePath() + "/files";
+        TuskottProperties.Extension extensionConfiguration = tuskottProperties.getExtension();
 
         handlerMapping.registerMapping(
-            RequestMappingInfo
-                .paths(endpoint + "/files")
-                .methods(RequestMethod.OPTIONS)
-                .build(),
-            tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "options", HttpServletRequest.class,
-                HttpServletResponse.class).getMethod());
+                RequestMappingInfo
+                        .paths(baseEndpoint)
+                        .methods(RequestMethod.OPTIONS)
+                        .build(),
+                tuskottProcessor,
+                new HandlerMethod(tuskottProcessor, "options", HttpServletRequest.class,
+                        HttpServletResponse.class).getMethod());
+
+        if (extensionConfiguration.isEnableCreation()) {
+            handlerMapping.registerMapping(
+                    RequestMappingInfo
+                            .paths(baseEndpoint)
+                            .methods(RequestMethod.POST)
+                            .build(),
+                    tuskottProcessor,
+                    new HandlerMethod(tuskottProcessor, "create", HttpServletRequest.class,
+                            HttpServletResponse.class).getMethod());
+        }
 
         handlerMapping.registerMapping(
-            RequestMappingInfo
-                .paths(endpoint + "/files")
-                .methods(RequestMethod.POST)
-                .build(),
-            tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "create", HttpServletRequest.class,
-                HttpServletResponse.class).getMethod());
+                RequestMappingInfo
+                        .paths(baseEndpoint + "/{resource}")
+                        .methods(RequestMethod.HEAD)
+                        .build(),
+                tuskottProcessor,
+                new HandlerMethod(tuskottProcessor, "head", String.class, HttpServletRequest.class,
+                        HttpServletResponse.class).getMethod());
 
         handlerMapping.registerMapping(
-            RequestMappingInfo
-                .paths(endpoint + "/files/{fileInfoID}")
-                .methods(RequestMethod.HEAD)
-                .build(),
-            tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "head", String.class, HttpServletRequest.class,
-                HttpServletResponse.class).getMethod());
+                RequestMappingInfo
+                        .paths(baseEndpoint + "/{resource}")
+                        .methods(RequestMethod.PATCH)
+                        .build(),
+                tuskottProcessor,
+                new HandlerMethod(tuskottProcessor, "patch", String.class, HttpServletRequest.class,
+                        HttpServletResponse.class).getMethod());
 
-        handlerMapping.registerMapping(
-            RequestMappingInfo
-                .paths(endpoint + "/files/{fileInfoID}")
-                .methods(RequestMethod.PATCH)
-                .build(),
-            tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "patch", String.class, HttpServletRequest.class,
-                HttpServletResponse.class).getMethod());
-
-        handlerMapping.registerMapping(
-            RequestMappingInfo
-                .paths(endpoint + "/files/{fileInfoID}")
-                .methods(RequestMethod.DELETE)
-                .build(),
-            tuskottProcessor,
-            new HandlerMethod(tuskottProcessor, "termination", String.class,
-                HttpServletRequest.class,
-                HttpServletResponse.class).getMethod());
+        if (extensionConfiguration.isEnableTermination()) {
+            handlerMapping.registerMapping(
+                    RequestMappingInfo
+                            .paths(baseEndpoint + "/{resource}")
+                            .methods(RequestMethod.DELETE)
+                            .build(),
+                    tuskottProcessor,
+                    new HandlerMethod(tuskottProcessor, "termination", String.class,
+                            HttpServletRequest.class,
+                            HttpServletResponse.class).getMethod());
+        }
     }
 
     private void registerEventHandler(TuskottProcessor tuskottProcessor) {
-        List<EventCallback> postCreateCallback = new ArrayList<>();
-        List<EventCallback> postFinishCallback = new ArrayList<>();
-        List<EventCallback> postTerminateCallback = new ArrayList<>();
+        List<TuskottEventCallback> postCreateCallback = new ArrayList<>();
+        List<TuskottEventCallback> postFinishCallback = new ArrayList<>();
+        List<TuskottEventCallback> postTerminateCallback = new ArrayList<>();
         // 扫描 @Component 里的 Bean
         Map<String, Object> beans = applicationContext.getBeansWithAnnotation(Component.class);
         for (Object bean : beans.values()) {
             for (Method method : bean.getClass().getDeclaredMethods()) {
-                if (method.isAnnotationPresent(PostFinish.class)
-                    && method.getParameterCount() == 1
-                    && method.getParameterTypes()[0] == PostFinishEvent.class) {
-                    postFinishCallback.add(new EventCallback(bean, method));
+                if (method.isAnnotationPresent(PostComplete.class)
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == PostCompleteEvent.class) {
+                    postFinishCallback.add(new TuskottEventCallback(bean, method));
                 } else if (method.isAnnotationPresent(PostCreate.class)
-                    && method.getParameterCount() == 1
-                    && method.getParameterTypes()[0] == PostCreateEvent.class) {
-                    postCreateCallback.add(new EventCallback(bean, method));
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == PostCreateEvent.class) {
+                    postCreateCallback.add(new TuskottEventCallback(bean, method));
                 } else if (method.isAnnotationPresent(PostTerminate.class)
-                    && method.getParameterCount() == 1
-                    && method.getParameterTypes()[0] == PostTerminateEvent.class) {
-                    postTerminateCallback.add(new EventCallback(bean, method));
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == PostTerminateEvent.class) {
+                    postTerminateCallback.add(new TuskottEventCallback(bean, method));
                 }
             }
         }
         tuskottProcessor.registerCallBack(postCreateCallback, postFinishCallback,
-            postTerminateCallback);
+                postTerminateCallback);
     }
 }

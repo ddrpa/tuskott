@@ -1,4 +1,4 @@
-package cc.ddrpa.tuskott.tus;
+package cc.ddrpa.tuskott;
 
 public class ConstantsPool {
 
@@ -6,9 +6,9 @@ public class ConstantsPool {
     public static final String TUS_VERSION = "1.0.0";
     // TODO concatenation
     // DO NOT SUPPORT checksum-trailer
-    public static final String TUS_EXTENSION = "creation,creation-defer-length,expiration,termination,checksum,creation-with-upload";
     public static final String HEADER_ACCESS_CONTROL_EXPOSE_HEADERS = "Access-Control-Expose-Headers";
     public static final String ACCESS_CONTROL_EXPOSE_HEADERS = "Location, Upload-Offset, Upload-Length, Tus-Version, Tus-Resumable, Tus-Extension, Tus-Max-Size, Upload-Checksum";
+    public static final String CACHE_CONTROL_NO_STORE = "no-store";
     public static final String HEADER_CONTENT_TYPE = "Content-Type";
     public static final String UPLOAD_CONTENT_TYPE = "application/offset+octet-stream";
     public static final String HEADER_UPLOAD_OFFSET = "Upload-Offset";
@@ -28,4 +28,8 @@ public class ConstantsPool {
 
     public static final int HTTP_LOCKED = 423;
     public static final int HTTP_CHECKSUM_MISMATCH = 460;
+
+    private ConstantsPool() {
+        throw new UnsupportedOperationException("Utility class cannot be instantiated");
+    }
 }

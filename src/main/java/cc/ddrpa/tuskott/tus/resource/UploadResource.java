@@ -1,32 +1,44 @@
-package cc.ddrpa.tuskott.tus.provider.impl;
+package cc.ddrpa.tuskott.tus.resource;
 
-import cc.ddrpa.tuskott.tus.provider.FileInfo;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
+import org.springframework.util.StringUtils;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-import org.springframework.util.StringUtils;
 
-public class SimpleFileInfo implements FileInfo, Serializable {
+@ToString
+@EqualsAndHashCode(callSuper = false)
+public class UploadResource implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private String id;
+    @Getter
+    private final String id;
+    @Getter
+    private final LocalDateTime createTime;
+    @Getter
+    private final LocalDateTime expireTime;
+    private final String metadata;
+    @Getter
     private String checksum;
     // 文件总体积（字节数）
+    @Getter
     private Long uploadLength;
     // 稍后指定文件体积
+    @Getter
     private Boolean uploadDeferLength;
     // 上传进度
+    @Getter
     private Long uploadOffset;
-    private LocalDateTime createTime;
-    private LocalDateTime expireTime;
-    private String metadata;
 
-    public SimpleFileInfo(String id, Long uploadLength, String metadata) {
+    public UploadResource(String id, Long uploadLength, String metadata) {
         this.id = id;
         this.uploadLength = uploadLength;
         this.uploadDeferLength = false;
@@ -36,7 +48,7 @@ public class SimpleFileInfo implements FileInfo, Serializable {
         this.metadata = metadata;
     }
 
-    public SimpleFileInfo(String id, String metadata) {
+    public UploadResource(String id, String metadata) {
         this.id = id;
         this.uploadLength = 0L;
         this.uploadDeferLength = true;
@@ -46,50 +58,18 @@ public class SimpleFileInfo implements FileInfo, Serializable {
         this.metadata = metadata;
     }
 
-    public void patch(long newUploadOffset) {
+    public UploadResource patch(long newUploadOffset) {
         this.uploadOffset = newUploadOffset;
+        return this;
     }
 
-    public void uploadLength(Long uploadLength) {
+    public UploadResource uploadLength(Long uploadLength) {
         this.uploadLength = uploadLength;
         this.uploadDeferLength = false;
+        return this;
     }
 
-    @Override
-    public String id() {
-        return id;
-    }
-
-    public String checksum() {
-        return checksum;
-    }
-
-    @Override
-    public Long uploadLength() {
-        return uploadLength;
-    }
-
-    @Override
-    public Boolean uploadDeferLength() {
-        return uploadDeferLength;
-    }
-
-    @Override
-    public Long uploadOffset() {
-        return uploadOffset;
-    }
-
-    public LocalDateTime createTime() {
-        return createTime;
-    }
-
-    @Override
-    public LocalDateTime expireTime() {
-        return expireTime;
-    }
-
-    @Override
-    public Map<String, String> metadata() {
+    public Map<String, String> getMetadata() {
         if (StringUtils.hasText(metadata)) {
             Map<String, String> decodedMetadata = new HashMap<>();
             String[] pairs = metadata.split(",");

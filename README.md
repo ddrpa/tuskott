@@ -7,8 +7,8 @@ tuskott 是一个开发中的 Spring Boot Starter，目前实现了 [tus 协议]
     - [x] 断点续传
 - 扩展功能
     - [x] 创建上传计划
-    - [x] 首次上传创建计划
-    - [x] 上传终止
+    - [x] 创建时即开始上传
+    - [x] 终止上传
     - [ ] 分片上传与文件合并
     - [x] 文件校验
     - [x] 过期
@@ -23,7 +23,7 @@ tuskott 是一个开发中的 Spring Boot Starter，目前实现了 [tus 协议]
 </dependency>
 ```
 
-# HowTo
+## HowTo
 
 如下展示了 `application.yaml` 配置的默认值：
 

@@ -12,7 +12,7 @@ import cc.ddrpa.tuskott.tus.storage.Storage;
 import jakarta.annotation.Nullable;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.Getter;
+
 import org.apache.commons.io.input.BoundedInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,11 +39,8 @@ public class TuskottProcessor {
     private static final Logger logger = LoggerFactory.getLogger(TuskottProcessor.class);
 
     private final TuskottProperties tuskottProperties;
-    @Getter
     private final UploadResourceTracker tracker;
-    @Getter
     private final Storage storage;
-    @Getter
     private final LockProvider lockProvider;
     private final DateTimeFormatter rfc7231DateTimeFormatter = DateTimeFormatter
             .ofPattern("EEE, dd MMM yyyy HH:mm:ss z", Locale.ENGLISH)
@@ -508,5 +505,17 @@ public class TuskottProcessor {
                 }
             });
         }
+    }
+
+    public UploadResourceTracker getTracker() {
+        return tracker;
+    }
+
+    public Storage getStorage() {
+        return storage;
+    }
+
+    public LockProvider getLockProvider() {
+        return lockProvider;
     }
 }

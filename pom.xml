@@ -77,11 +77,6 @@
       <artifactId>spring-boot-configuration-processor</artifactId>
       <scope>compile</scope>
     </dependency>
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <optional>true</optional>
-    </dependency>
   </dependencies>
 
   <build>

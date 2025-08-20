@@ -15,6 +15,7 @@ import cc.ddrpa.tuskott.tus.storage.Storage;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -34,16 +35,27 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Configuration
 @EnableConfigurationProperties(TuskottProperties.class)
 public class TuskottAutoConfiguration implements ApplicationContextAware {
 
     private final TuskottProperties tuskottProperties;
+    private final ObjectProvider<UploadResourceTracker> uploadResourceTrackerObjectProvider;
+    private final ObjectProvider<LockProvider> lockProviderObjectProvider;
+    private final ObjectProvider<Storage> storageObjectProvider;
+
     private ApplicationContext applicationContext;
 
-    public TuskottAutoConfiguration(TuskottProperties tuskottProperties) {
+    public TuskottAutoConfiguration(TuskottProperties tuskottProperties,
+                                    ObjectProvider<UploadResourceTracker> uploadResourceTrackerObjectProvider,
+                                    ObjectProvider<LockProvider> lockProviderObjectProvider,
+                                    ObjectProvider<Storage> storageObjectProvider) {
         this.tuskottProperties = tuskottProperties;
+        this.uploadResourceTrackerObjectProvider = uploadResourceTrackerObjectProvider;
+        this.lockProviderObjectProvider = lockProviderObjectProvider;
+        this.storageObjectProvider = storageObjectProvider;
     }
 
     @Override
@@ -54,18 +66,39 @@ public class TuskottAutoConfiguration implements ApplicationContextAware {
     @Bean
     @ConditionalOnMissingBean(TuskottProcessor.class)
     TuskottProcessor tuskottProcessor() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        Class<Storage> storageClass = (Class<Storage>) Class.forName(tuskottProperties.getStorage().getProvider());
-        Map<String, Object> storageConfig = tuskottProperties.getStorage().getConfig();
-        Storage storage = storageClass.getDeclaredConstructor(Map.class).newInstance(storageConfig);
+        // 先检查有没有用户注册的 Bean 实现
+        Storage storage = storageObjectProvider.getIfAvailable();
+        if (Objects.isNull(storage)) {
+            // 用配置文件中的 Storage 实现
+            Class<?> givenClass = Class.forName(tuskottProperties.getStorage().getProvider());
+            if (!Storage.class.isAssignableFrom(givenClass)) {
+                throw new IllegalArgumentException("Storage class " + givenClass.getName() + " does not implement Storage interface");
+            }
+            Map<String, Object> storageConfig = tuskottProperties.getStorage().getConfig();
+            storage = ((Class<Storage>) givenClass).getDeclaredConstructor(Map.class).newInstance(storageConfig);
+        }
 
-        Class<UploadResourceTracker> uploadResourceHolderClass = (Class<UploadResourceTracker>) Class.forName(tuskottProperties.getTracker().getProvider());
-        Map<String, Object> trackerConfig = tuskottProperties.getTracker().getConfig();
-        UploadResourceTracker uploadResourceTracker = uploadResourceHolderClass.getDeclaredConstructor(Map.class).newInstance(trackerConfig);
+        UploadResourceTracker uploadResourceTracker = uploadResourceTrackerObjectProvider.getIfAvailable();
+        if (Objects.isNull(uploadResourceTracker)) {
+            // 用配置文件中的 UploadResourceTracker 实现
+            Class<?> givenClass = Class.forName(tuskottProperties.getTracker().getProvider());
+            if (!UploadResourceTracker.class.isAssignableFrom(givenClass)) {
+                throw new IllegalArgumentException("UploadResourceTracker class " + givenClass.getName() + " does not implement UploadResourceTracker interface");
+            }
+            Map<String, Object> trackerConfig = tuskottProperties.getTracker().getConfig();
+            uploadResourceTracker = ((Class<UploadResourceTracker>) givenClass).getDeclaredConstructor(Map.class).newInstance(trackerConfig);
+        }
 
-        Class<LockProvider> lockProviderClass = (Class<LockProvider>) Class.forName(tuskottProperties.getLock().getProvider());
-        Map<String, Object> lockConfig = tuskottProperties.getLock().getConfig();
-        LockProvider lockProvider = lockProviderClass.getDeclaredConstructor(Map.class).newInstance(lockConfig);
-
+        // 检查有没有用户注册的 LockProvider 实现
+        LockProvider lockProvider = lockProviderObjectProvider.getIfAvailable();
+        if (Objects.isNull(lockProvider)) {
+            Class<?> givenClass = Class.forName(tuskottProperties.getLock().getProvider());
+            if (!LockProvider.class.isAssignableFrom(givenClass)) {
+                throw new IllegalArgumentException("LockProvider class " + givenClass.getName() + " does not implement LockProvider interface");
+            }
+            Map<String, Object> lockConfig = tuskottProperties.getLock().getConfig();
+            lockProvider = ((Class<LockProvider>) givenClass).getDeclaredConstructor(Map.class).newInstance(lockConfig);
+        }
         return new TuskottProcessor(tuskottProperties, uploadResourceTracker, storage, lockProvider);
     }
 

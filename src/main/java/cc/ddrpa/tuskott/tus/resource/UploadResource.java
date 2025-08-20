@@ -1,8 +1,5 @@
 package cc.ddrpa.tuskott.tus.resource;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
 import org.springframework.util.StringUtils;
 
 import java.io.Serial;
@@ -11,31 +8,23 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
-@ToString
-@EqualsAndHashCode(callSuper = false)
 public class UploadResource implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
 
-    @Getter
     private final String id;
-    @Getter
     private final LocalDateTime createTime;
-    @Getter
     private final LocalDateTime expireTime;
     private final String metadata;
-    @Getter
     private String checksum;
     // 文件总体积（字节数）
-    @Getter
     private Long uploadLength;
     // 稍后指定文件体积
-    @Getter
     private Boolean uploadDeferLength;
     // 上传进度
-    @Getter
     private Long uploadOffset;
 
     public UploadResource(String id, Long uploadLength, String metadata) {
@@ -86,5 +75,67 @@ public class UploadResource implements Serializable {
         } else {
             return Map.of();
         }
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public LocalDateTime getCreateTime() {
+        return createTime;
+    }
+
+    public LocalDateTime getExpireTime() {
+        return expireTime;
+    }
+
+    public String getChecksum() {
+        return checksum;
+    }
+
+    public Long getUploadLength() {
+        return uploadLength;
+    }
+
+    public Boolean getUploadDeferLength() {
+        return uploadDeferLength;
+    }
+
+    public Long getUploadOffset() {
+        return uploadOffset;
+    }
+
+    @Override
+    public String toString() {
+        return "UploadResource{" +
+                "id='" + id + '\'' +
+                ", createTime=" + createTime +
+                ", expireTime=" + expireTime +
+                ", metadata='" + metadata + '\'' +
+                ", checksum='" + checksum + '\'' +
+                ", uploadLength=" + uploadLength +
+                ", uploadDeferLength=" + uploadDeferLength +
+                ", uploadOffset=" + uploadOffset +
+                '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UploadResource that = (UploadResource) o;
+        return Objects.equals(id, that.id) &&
+                Objects.equals(createTime, that.createTime) &&
+                Objects.equals(expireTime, that.expireTime) &&
+                Objects.equals(metadata, that.metadata) &&
+                Objects.equals(checksum, that.checksum) &&
+                Objects.equals(uploadLength, that.uploadLength) &&
+                Objects.equals(uploadDeferLength, that.uploadDeferLength) &&
+                Objects.equals(uploadOffset, that.uploadOffset);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, createTime, expireTime, metadata, checksum, uploadLength, uploadDeferLength, uploadOffset);
     }
 }

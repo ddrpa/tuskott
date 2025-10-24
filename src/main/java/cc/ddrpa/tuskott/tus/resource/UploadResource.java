@@ -27,6 +27,17 @@ public class UploadResource implements Serializable {
     // 上传进度
     private Long uploadOffset;
 
+    public UploadResource(String id, LocalDateTime createTime, LocalDateTime expireTime, String metadata, String checksum, Long uploadLength, Boolean uploadDeferLength, Long uploadOffset) {
+        this.id = id;
+        this.createTime = createTime;
+        this.expireTime = expireTime;
+        this.metadata = metadata;
+        this.checksum = checksum;
+        this.uploadLength = uploadLength;
+        this.uploadDeferLength = uploadDeferLength;
+        this.uploadOffset = uploadOffset;
+    }
+
     public UploadResource(String id, Long uploadLength, String metadata) {
         this.id = id;
         this.uploadLength = uploadLength;

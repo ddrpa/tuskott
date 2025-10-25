@@ -12,7 +12,6 @@ import cc.ddrpa.tuskott.tus.storage.Storage;
 import jakarta.annotation.Nullable;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-
 import org.apache.commons.io.input.BoundedInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,28 +102,40 @@ public class TuskottProcessor {
      * <p>
      * The Upload-Length header indicates the size of the entire upload in bytes.
      */
-    public void create(HttpServletRequest request, HttpServletResponse response) {
+    public void create(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
                 ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, ConstantsPool.CACHE_CONTROL_NO_STORE);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
+
         if (!checkTusResumable(request)) {
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_TUS_VERSION.formatted(request.getRequestURI()));
             return;
         }
+
         Optional<Long> optionalUploadLength = getLongValueFromRequestHeader(request, ConstantsPool.HEADER_UPLOAD_LENGTH);
         if (optionalUploadLength.isEmpty()) {
             // 如果客户端没有提供 Upload-Length，允许客户端在之后声明上传长度
             if (!checkUploadDeferLength(request)) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+                response.getWriter().write(
+                        ConstantsPool.PROBLEM_DETAIL_MISSING_UPLOAD_LENGTH.formatted(request.getRequestURI()));
                 return;
             }
         } else if (optionalUploadLength.get() > tuskottProperties.getMaxUploadLength()) {
             // 客户端声明的上传总体积过大，返回 HTTP 413
             response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_REQUEST_ENTITY_TOO_LARGE.formatted(tuskottProperties.getMaxUploadLength(), request.getRequestURI()));
             return;
         }
+
         UploadResource uploadResource;
         try {
             uploadResource = createUploadResource(optionalUploadLength.orElse(null),
@@ -132,6 +143,9 @@ public class TuskottProcessor {
         } catch (BlobAccessException | IOException e) {
             logger.error(e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_INTERNAL_SERVER_ERROR.formatted(e.getMessage(), request.getRequestURI()));
             return;
         }
 
@@ -162,21 +176,29 @@ public class TuskottProcessor {
      * A HEAD request is used to determine the offset at which the upload should be continued.
      */
     public void head(@PathVariable("resource") String resourceId,
-                     HttpServletRequest request, HttpServletResponse response) {
+                     HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
                 ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, ConstantsPool.CACHE_CONTROL_NO_STORE);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
                 String.valueOf(tuskottProperties.getMaxUploadLength()));
+
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_TUS_VERSION.formatted(request.getRequestURI()));
             return;
         }
+
         UploadResource uploadResource = tracker.head(resourceId);
         if (Objects.isNull(uploadResource)) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UPLOAD_RESOURCE_NOT_FOUND.formatted(request.getRequestURI()));
             return;
         }
         response.setHeader(ConstantsPool.HEADER_UPLOAD_EXPIRES,
@@ -186,12 +208,10 @@ public class TuskottProcessor {
             response.setHeader(ConstantsPool.HEADER_UPLOAD_DEFER_LENGTH, "1");
         }
         response.setStatus(HttpServletResponse.SC_NO_CONTENT);
-        response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET,
-                String.valueOf(uploadResource.getUploadOffset()));
+        response.setHeader(ConstantsPool.HEADER_UPLOAD_OFFSET, String.valueOf(uploadResource.getUploadOffset()));
         if (Objects.nonNull(uploadResource.getUploadLength())) {
             response.setHeader(ConstantsPool.HEADER_UPLOAD_LENGTH,
                     String.valueOf(uploadResource.getUploadLength()));
-
         }
     }
 
@@ -199,27 +219,37 @@ public class TuskottProcessor {
      * the Client uses the PATCH method to resume the upload
      */
     public void patch(@PathVariable("resource") String resourceId,
-                      HttpServletRequest request, HttpServletResponse response) {
+                      HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
                 ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, ConstantsPool.CACHE_CONTROL_NO_STORE);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
-        response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
-                String.valueOf(tuskottProperties.getMaxUploadLength()));
+        response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE, String.valueOf(tuskottProperties.getMaxUploadLength()));
+
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_TUS_VERSION.formatted(request.getRequestURI()));
             return;
         }
+
         boolean contentTypeCheck = checkContentType(request);
         if (!contentTypeCheck) {
             response.setStatus(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_MEDIA_TYPE.formatted(request.getRequestURI()));
             return;
         }
 
         UploadResource uploadResource = tracker.head(resourceId);
         if (Objects.isNull(uploadResource)) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UPLOAD_RESOURCE_NOT_FOUND.formatted(request.getRequestURI()));
             return;
         }
         response.setHeader(ConstantsPool.HEADER_UPLOAD_EXPIRES,
@@ -230,9 +260,15 @@ public class TuskottProcessor {
             Optional<Long> optionalUploadLength = getLongValueFromRequestHeader(request, ConstantsPool.HEADER_UPLOAD_LENGTH);
             if (optionalUploadLength.isEmpty()) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+                response.getWriter().write(
+                        ConstantsPool.PROBLEM_DETAIL_MISSING_UPLOAD_LENGTH.formatted(request.getRequestURI()));
                 return;
             } else if (optionalUploadLength.get() > tuskottProperties.getMaxUploadLength()) {
                 response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
+                response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+                response.getWriter().write(
+                        ConstantsPool.PROBLEM_DETAIL_REQUEST_ENTITY_TOO_LARGE.formatted(request.getRequestURI()));
                 return;
             }
             tracker.updateUploadLength(resourceId, optionalUploadLength.get());
@@ -243,16 +279,29 @@ public class TuskottProcessor {
         Optional<Long> optionalUploadOffset = getLongValueFromRequestHeader(request, ConstantsPool.HEADER_UPLOAD_OFFSET);
         if (optionalUploadOffset.isEmpty()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_MISSING_UPLOAD_OFFSET.formatted(request.getRequestURI()));
             return;
         }
-        if (optionalUploadOffset.get() > uploadResource.getUploadOffset()) {
+        Long clientClaimedOffset = optionalUploadOffset.get();
+        Long serverRecordedOffset = uploadResource.getUploadOffset();
+        if (clientClaimedOffset > serverRecordedOffset) {
             response.setStatus(HttpServletResponse.SC_CONFLICT);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_OFFSET_MISMATCH.formatted(
+                            clientClaimedOffset,
+                            serverRecordedOffset,
+                            request.getRequestURI(),
+                            serverRecordedOffset,
+                            clientClaimedOffset));
             return;
         }
-        doPath(uploadResource, request, response, optionalUploadOffset.get());
+        doPath(uploadResource, request, response, clientClaimedOffset);
     }
 
-    private void doPath(UploadResource uploadResource, HttpServletRequest request, HttpServletResponse response, long uploadOffset) {
+    private void doPath(UploadResource uploadResource, HttpServletRequest request, HttpServletResponse response, long uploadOffset) throws IOException {
         String resourceId = uploadResource.getId();
         // 计算从客户端声明的 Upload-Offset 到完整上传的差值，与单次上传 chunk 上限比较取最小值作为上传上限
         // 防止上传溢出
@@ -268,12 +317,18 @@ public class TuskottProcessor {
             String[] split = checksumRequest.split(" ");
             if (split.length != 2) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+                response.getWriter().write(
+                        ConstantsPool.PROBLEM_DETAIL_UNREADABLE_CHECKSUM_REQUEST_HEADER.formatted(request.getRequestURI()));
                 return;
             }
             try {
                 messageDigest = ChecksumAlgorithmSelector.getMessageDigest(split[0]);
             } catch (NoSuchAlgorithmException e) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+                response.getWriter().write(
+                        ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_CHECKSUM_ALGORITHM.formatted(request.getRequestURI()));
                 return;
             }
             expectedChecksum = Base64.getDecoder().decode(split[1]);
@@ -282,6 +337,9 @@ public class TuskottProcessor {
 
         if (!lockProvider.acquire(resourceId)) {
             response.setStatus(ConstantsPool.HTTP_LOCKED);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_RESOURCE_LOCKED.formatted(request.getRequestURI()));
             return;
         }
         try (InputStream originInputStream = request.getInputStream()) {
@@ -307,15 +365,18 @@ public class TuskottProcessor {
             }
         } catch (ChecksumMismatchException e) {
             response.setStatus(ConstantsPool.HTTP_CHECKSUM_MISMATCH);
-        } catch (FileNotFoundException e) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_CHECKSUM_MISMATCH.formatted(request.getRequestURI()));
         } catch (BlobAccessException | IOException e) {
             logger.error(e.getMessage());
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_SERVICE_UNAVAILABLE.formatted(e.getMessage(), request.getRequestURI()));
         } finally {
             lockProvider.release(resourceId);
         }
-        response.setStatus(HttpServletResponse.SC_NO_CONTENT);
     }
 
     /**
@@ -323,21 +384,29 @@ public class TuskottProcessor {
      * free up used resources.
      */
     public void termination(@PathVariable("resource") String resourceId,
-                            HttpServletRequest request, HttpServletResponse response) {
+                            HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader(ConstantsPool.HEADER_ACCESS_CONTROL_EXPOSE_HEADERS,
                 ConstantsPool.ACCESS_CONTROL_EXPOSE_HEADERS);
         response.setHeader(ConstantsPool.HEADER_CACHE_CONTROL, ConstantsPool.CACHE_CONTROL_NO_STORE);
         response.setHeader(ConstantsPool.HEADER_TUS_RESUMABLE, ConstantsPool.TUS_VERSION);
         response.setHeader(ConstantsPool.HEADER_TUS_MAX_SIZE,
                 String.valueOf(tuskottProperties.getMaxUploadLength()));
+
         if (!checkTusResumable(request)) {
             response.setStatus(HttpServletResponse.SC_PRECONDITION_FAILED);
             response.setHeader(ConstantsPool.HEADER_TUS_VERSION, ConstantsPool.TUS_VERSION);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_TUS_VERSION.formatted(request.getRequestURI()));
             return;
         }
+
         boolean contentTypeCheck = checkContentType(request);
         if (!contentTypeCheck) {
             response.setStatus(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+            response.setContentType(ConstantsPool.PROBLEM_JSON_CONTENT_TYPE);
+            response.getWriter().write(
+                    ConstantsPool.PROBLEM_DETAIL_UNSUPPORTED_MEDIA_TYPE.formatted(request.getRequestURI()));
             return;
         }
         terminationUploadResource(resourceId);

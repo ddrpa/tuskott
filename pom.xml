@@ -6,7 +6,7 @@
 
     <groupId>cc.ddrpa.tuskott</groupId>
     <artifactId>tuskott-spring-boot-starter</artifactId>
-    <version>0.0.3</version>
+    <version>0.0.4</version>
     <name>${project.groupId}:${project.artifactId}</name>
 
     <licenses>

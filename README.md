@@ -12,14 +12,16 @@ tuskott 是一个开发中的 Spring Boot Starter，目前实现了 [tus 协议]
     - [ ] 分片上传与文件合并
     - [x] 文件校验
     - [x] 过期
+- 未在 Tus 协议中约定的内容
+  - [x] 基于 RFC 7807 的错误响应
 
-项目仍在开发中，目前在 SNAPSHOT 仓库中提供了 `0.0.3-SNAPSHOT` 版本（注意 `0.0.3-SNAPSHOT` 版本在 API 和配置命名上和之前有所区别）
+项目仍在开发中，目前的稳定版本为 `0.0.4`（`0.0.3` 版本在 API 和配置命名上和之前有所区别）。
 
 ```xml
 <dependency>
   <groupId>cc.ddrpa.tuskott</groupId>
   <artifactId>tuskott-spring-boot-starter</artifactId>
-  <version>0.0.3-SNAPSHOT</version>
+  <version>0.0.4</version>
 </dependency>
 ```
 

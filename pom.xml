@@ -42,7 +42,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <spring-boot.version>3.5.4</spring-boot.version>
-        <common-io.version>2.18.0</common-io.version>
+        <common-io.version>2.20.0</common-io.version>
     </properties>
 
     <dependencyManagement>
